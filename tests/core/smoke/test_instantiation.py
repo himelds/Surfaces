@@ -13,7 +13,7 @@ from surfaces.test_functions.algebraic import (
     algebraic_functions_nd,
 )
 from surfaces.test_functions.algebraic.constrained import constrained_functions
-from surfaces.test_functions.benchmark.bbob import bbob_functions
+from surfaces.test_functions.bbob import bbob_functions
 
 
 def func_id(func_class):

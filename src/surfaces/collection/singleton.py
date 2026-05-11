@@ -67,7 +67,7 @@ class _CollectionSingleton(Collection):
         add_functions(algebraic_functions)
 
         # BBOB functions (always available)
-        from ..test_functions.benchmark.bbob import bbob_functions
+        from ..test_functions.bbob import bbob_functions
 
         add_functions(bbob_functions)
 
@@ -83,9 +83,9 @@ class _CollectionSingleton(Collection):
 
         # CEC functions (require cec data package)
         try:
-            from ..test_functions.benchmark.cec.cec2013 import cec2013_functions
-            from ..test_functions.benchmark.cec.cec2014 import cec2014_functions
-            from ..test_functions.benchmark.cec.cec2017 import cec2017_functions
+            from ..test_functions.cec.cec2013 import cec2013_functions
+            from ..test_functions.cec.cec2014 import cec2014_functions
+            from ..test_functions.cec.cec2017 import cec2017_functions
 
             add_functions(cec2013_functions)
             add_functions(cec2014_functions)

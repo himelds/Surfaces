@@ -20,7 +20,7 @@ Reference:
 import numpy as np
 import pytest
 
-from surfaces.test_functions.benchmark.bbob import (
+from surfaces.test_functions.bbob import (
     BBOB_FUNCTIONS,
     # Low/Moderate Conditioning (f6-f9)
     AttractiveSector,

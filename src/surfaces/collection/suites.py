@@ -63,7 +63,7 @@ from ..test_functions.algebraic.multi_objective import (
     FonsecaFleming,
     Kursawe,
 )
-from ..test_functions.benchmark.bbob import (
+from ..test_functions.bbob import (
     # Low/Moderate Conditioning (f6-f9)
     AttractiveSector,
     BentCigar,
@@ -92,11 +92,11 @@ from ..test_functions.benchmark.bbob import (
     StepEllipsoidal,
     Weierstrass,
 )
-from ..test_functions.benchmark.bbob import (
+from ..test_functions.bbob import (
     # Separable (f1-f5)
     Sphere as BBOB_Sphere,
 )
-from ..test_functions.benchmark.cec.cec2014 import (
+from ..test_functions.cec.cec2014 import (
     # Composition
     CompositionFunction1,
     CompositionFunction2,
@@ -128,17 +128,17 @@ from ..test_functions.benchmark.cec.cec2014 import (
     ShiftedRotatedWeierstrass,
     ShiftedSchwefel,
 )
-from ..test_functions.benchmark.cec.cec2014 import (
+from ..test_functions.cec.cec2014 import (
     ShiftedRotatedRastrigin as CEC2014_ShiftedRotatedRastrigin,
 )
-from ..test_functions.benchmark.cec.cec2014 import (
+from ..test_functions.cec.cec2014 import (
     # Multimodal
     ShiftedRotatedRosenbrock as CEC2014_ShiftedRotatedRosenbrock,
 )
-from ..test_functions.benchmark.cec.cec2014 import (
+from ..test_functions.cec.cec2014 import (
     ShiftedRotatedSchwefel as CEC2014_ShiftedRotatedSchwefel,
 )
-from ..test_functions.benchmark.cec.cec2017 import (
+from ..test_functions.cec.cec2017 import (
     ShiftedRotatedBentCigar,
     ShiftedRotatedLevy,
     ShiftedRotatedLunacekBiRastrigin,
@@ -147,13 +147,13 @@ from ..test_functions.benchmark.cec.cec2017 import (
     ShiftedRotatedSumDiffPow,
     ShiftedRotatedZakharov,
 )
-from ..test_functions.benchmark.cec.cec2017 import (
+from ..test_functions.cec.cec2017 import (
     ShiftedRotatedRastrigin as CEC2017_ShiftedRotatedRastrigin,
 )
-from ..test_functions.benchmark.cec.cec2017 import (
+from ..test_functions.cec.cec2017 import (
     ShiftedRotatedRosenbrock as CEC2017_ShiftedRotatedRosenbrock,
 )
-from ..test_functions.benchmark.cec.cec2017 import (
+from ..test_functions.cec.cec2017 import (
     ShiftedRotatedSchwefel as CEC2017_ShiftedRotatedSchwefel,
 )
 

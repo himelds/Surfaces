@@ -7,7 +7,7 @@
 import numpy as np
 import pytest
 
-from surfaces.test_functions.benchmark.cec.cec2017 import (
+from surfaces.test_functions.cec.cec2017 import (
     ShiftedRotatedBentCigar,
     cec2017_functions,
 )

@@ -4,7 +4,7 @@
 Test Functions
 ==============
 
-Surfaces provides five categories of test functions, each designed for
+Surfaces provides seven categories of test functions, each designed for
 specific benchmarking purposes.
 
 ----
@@ -75,6 +75,30 @@ Function Categories
       - Pressure Vessel Design
       - Tension-Compression Spring
 
+   .. grid-item-card:: Multi-Objective Functions
+      :link: multi_objective
+      :link-type: doc
+      :class-card: sd-border-primary
+
+      Standard benchmarks for Pareto-front approximation,
+      with analytic fronts for ground-truth evaluation.
+
+      - ZDT1 to ZDT6
+      - DTLZ1 to DTLZ7
+      - WFG1 to WFG9
+
+   .. grid-item-card:: Discrete Functions
+      :link: discrete
+      :link-type: doc
+      :class-card: sd-border-success
+
+      Binary / pseudo-boolean test functions for
+      combinatorial optimization benchmarks.
+
+      - OneMax, LeadingOnes
+      - NK Landscape, Trap
+      - 0/1 Knapsack
+
 ----
 
 Choosing the Right Category
@@ -102,6 +126,12 @@ Choosing the Right Category
    * - Constrained optimization
      - Engineering
      - Physical constraints
+   * - Pareto-front approximation
+     - Multi-Objective
+     - ZDT / DTLZ / WFG families with analytic fronts
+   * - Binary / combinatorial
+     - Discrete
+     - Pseudo-boolean, tunable ruggedness, deception
 
 ----
 
@@ -138,3 +168,5 @@ All test functions share the same interface:
    cec
    machine_learning
    engineering
+   multi_objective
+   discrete

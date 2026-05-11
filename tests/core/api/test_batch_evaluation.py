@@ -42,7 +42,7 @@ from surfaces.test_functions.algebraic import (
     standard_functions_2d,
     standard_functions_nd,
 )
-from surfaces.test_functions.benchmark.bbob import (
+from surfaces.test_functions.bbob import (
     # Low/Moderate Conditioning (f6-f9)
     AttractiveSector,
     BentCigar,
@@ -72,7 +72,7 @@ from surfaces.test_functions.benchmark.bbob import (
     StepEllipsoidal,
     Weierstrass,
 )
-from surfaces.test_functions.benchmark.bbob import (
+from surfaces.test_functions.bbob import (
     Sphere as BBOBSphere,
 )
 

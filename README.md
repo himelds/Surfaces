@@ -315,7 +315,7 @@ score_full = func(params, fidelity=1.0)
 <summary><b>Benchmark Suites</b></summary>
 
 ```python
-from surfaces.test_functions.benchmark.bbob import (
+from surfaces.test_functions.bbob import (
     Sphere as BBOBSphere,
     RosenbrockOriginal as BBOBRosenbrock,
 )
