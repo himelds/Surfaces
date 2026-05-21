@@ -186,7 +186,9 @@ class BBOBFunction(AlgebraicFunction):
         np.ndarray
             Transformed vector.
         """
-        x_hat = np.where(x != 0, np.log(np.abs(x)), 0)
+        nonzero = x != 0
+        safe_abs = np.where(nonzero, np.abs(x), 1.0)
+        x_hat = np.where(nonzero, np.log(safe_abs), 0.0)
         c1 = np.where(x > 0, 10.0, 5.5)
         c2 = np.where(x > 0, 7.9, 3.1)
         return np.sign(x) * np.exp(x_hat + 0.049 * (np.sin(c1 * x_hat) + np.sin(c2 * x_hat)))

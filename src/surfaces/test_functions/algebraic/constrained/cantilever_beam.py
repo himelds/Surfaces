@@ -93,9 +93,9 @@ class CantileverBeamFunction(EngineeringFunction):
     Attributes
     ----------
     f_global : float
-        Best known objective value: approximately 1.3400.
+        Best known objective value: approximately 1.33995636.
     x_global : ndarray
-        Best known solution: [6.0089, 5.3049, 4.5023, 3.5077, 2.1504].
+        Best known solution: [6.01601589, 5.30917386, 4.49432957, 3.50147497, 2.15266533].
 
     Notes
     -----
@@ -136,8 +136,16 @@ class CantileverBeamFunction(EngineeringFunction):
     variable_names = ["x1", "x2", "x3", "x4", "x5"]
     variable_bounds = [(0.01, 100.0), (0.01, 100.0), (0.01, 100.0), (0.01, 100.0), (0.01, 100.0)]
 
-    f_global = 1.3400
-    x_global = np.array([6.0089, 5.3049, 4.5023, 3.5077, 2.1504])
+    f_global = 1.3399563605990743
+    x_global = np.array(
+        [
+            6.01601589415059,
+            5.309173857413238,
+            4.494329573323156,
+            3.50147497042532,
+            2.1526653296728657,
+        ]
+    )
 
     def __init__(
         self,

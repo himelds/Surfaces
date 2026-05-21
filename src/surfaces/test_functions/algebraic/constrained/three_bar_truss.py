@@ -95,9 +95,9 @@ class ThreeBarTrussFunction(EngineeringFunction):
     Attributes
     ----------
     f_global : float
-        Best known objective value: approximately 263.896 (for default parameters).
+        Best known objective value: approximately 263.895843.
     x_global : ndarray
-        Best known solution: approximately [0.789, 0.408].
+        Best known solution: approximately [0.7886751346, 0.4082482905].
 
     References
     ----------
@@ -131,8 +131,8 @@ class ThreeBarTrussFunction(EngineeringFunction):
     variable_names = ["A1", "A2"]
     variable_bounds = [(0.0, 1.0), (0.0, 1.0)]
 
-    f_global = 263.8958434
-    x_global = np.array([0.78867513, 0.40824829])
+    f_global = 263.8958433764684
+    x_global = np.array([0.5 + np.sqrt(3.0) / 6.0, 1.0 / np.sqrt(6.0)])
 
     def __init__(
         self,

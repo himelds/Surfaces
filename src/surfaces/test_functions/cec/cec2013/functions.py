@@ -13,6 +13,663 @@ from surfaces._array_utils import ArrayLike, get_array_namespace
 
 from ._base_cec2013 import CEC2013Function
 
+_SCHWEFEL_OPTIMUM = 4.209687462275036e2
+_SCHWEFEL_OFFSET = 4.189828872724338e2
+
+
+def _lambda_scale_np(x: np.ndarray, alpha: float) -> np.ndarray:
+    D = len(x)
+    if D <= 1:
+        return x.copy()
+    idx = np.arange(D, dtype=float)
+    return x * np.power(alpha, 0.5 * idx / (D - 1))
+
+
+def _batch_lambda_scale_xp(X: ArrayLike, alpha: float) -> ArrayLike:
+    xp = get_array_namespace(X)
+    D = X.shape[1]
+    if D <= 1:
+        return X
+    idx = xp.arange(D, dtype=X.dtype)
+    return X * xp.power(float(alpha), 0.5 * idx / (D - 1))
+
+
+def _osz_endpoints(x: np.ndarray) -> np.ndarray:
+    z = x.copy()
+    if len(z) == 0:
+        return z
+    for i in (0, len(z) - 1):
+        xi = x[i]
+        if xi == 0:
+            z[i] = 0.0
+            continue
+        c1 = 10.0 if xi > 0 else 5.5
+        c2 = 7.9 if xi > 0 else 3.1
+        x_hat = np.log(abs(xi))
+        z[i] = np.sign(xi) * np.exp(x_hat + 0.049 * (np.sin(c1 * x_hat) + np.sin(c2 * x_hat)))
+    return z
+
+
+def _batch_osz_endpoints(X: ArrayLike) -> ArrayLike:
+    xp = get_array_namespace(X)
+    Z = X.copy()
+    if X.shape[1] == 0:
+        return Z
+
+    cols = (0,) if X.shape[1] == 1 else (0, X.shape[1] - 1)
+    for col in cols:
+        values = X[:, col]
+        nonzero = values != 0
+        safe_abs = xp.where(nonzero, xp.abs(values), 1.0)
+        x_hat = xp.where(nonzero, xp.log(safe_abs), 0.0)
+        c1 = xp.where(values > 0, 10.0, 5.5)
+        c2 = xp.where(values > 0, 7.9, 3.1)
+        transformed = xp.sign(values) * xp.exp(
+            x_hat + 0.049 * (xp.sin(c1 * x_hat) + xp.sin(c2 * x_hat))
+        )
+        Z[:, col] = xp.where(nonzero, transformed, 0.0)
+    return Z
+
+
+def _rotate_with_index(func: CEC2013Function, x: np.ndarray, index: int) -> np.ndarray:
+    return func._get_rotation_matrix(index) @ x
+
+
+def _batch_rotate_with_index(func: CEC2013Function, X: ArrayLike, index: int) -> ArrayLike:
+    xp = get_array_namespace(X)
+    matrix = xp.asarray(func._get_rotation_matrix(index), dtype=X.dtype)
+    return X @ matrix.T
+
+
+def _shift_with_index(func: CEC2013Function, x: np.ndarray, index: int) -> np.ndarray:
+    return x - func._get_shift_vector(index)
+
+
+def _batch_shift_with_index(func: CEC2013Function, X: ArrayLike, index: int) -> ArrayLike:
+    xp = get_array_namespace(X)
+    shift = xp.asarray(func._get_shift_vector(index), dtype=X.dtype)
+    return X - shift
+
+
+def _sphere_core(z: np.ndarray) -> float:
+    return float(np.sum(z**2))
+
+
+def _elliptic_core(z: np.ndarray) -> float:
+    D = len(z)
+    if D <= 1:
+        return float(z[0] ** 2)
+    idx = np.arange(D, dtype=float)
+    coeffs = np.power(1e6, idx / (D - 1))
+    return float(np.sum(coeffs * z**2))
+
+
+def _different_powers_core(z: np.ndarray) -> float:
+    D = len(z)
+    if D <= 1:
+        return float(abs(z[0]) ** 2)
+    idx = np.arange(D, dtype=float)
+    exponents = 2 + 4 * idx / (D - 1)
+    return float(np.sqrt(np.sum(np.abs(z) ** exponents)))
+
+
+def _bent_cigar_core(z: np.ndarray) -> float:
+    if len(z) <= 1:
+        return float(z[0] ** 2)
+    return float(z[0] ** 2 + 1e6 * np.sum(z[1:] ** 2))
+
+
+def _discus_core(z: np.ndarray) -> float:
+    if len(z) <= 1:
+        return float(1e6 * z[0] ** 2)
+    return float(1e6 * z[0] ** 2 + np.sum(z[1:] ** 2))
+
+
+def _rosenbrock_core(z: np.ndarray) -> float:
+    return float(np.sum(100 * (z[:-1] ** 2 - z[1:]) ** 2 + (z[:-1] - 1) ** 2))
+
+
+def _schaffer_f7_core(z: np.ndarray) -> float:
+    S = np.sqrt(z[:-1] ** 2 + z[1:] ** 2)
+    result = np.sum(np.sqrt(S) * (np.sin(50 * S**0.2) ** 2 + 1))
+    return float((result / (len(z) - 1)) ** 2)
+
+
+def _ackley_core(z: np.ndarray) -> float:
+    D = len(z)
+    sum1 = np.sum(z**2)
+    sum2 = np.sum(np.cos(2 * np.pi * z))
+    return float(-20 * np.exp(-0.2 * np.sqrt(sum1 / D)) - np.exp(sum2 / D) + 20 + np.e)
+
+
+def _weierstrass_core(z: np.ndarray) -> float:
+    a = 0.5
+    b = 3
+    k_max = 20
+    result = 0.0
+    for zi in z:
+        for k in range(k_max + 1):
+            result += a**k * np.cos(2 * np.pi * b**k * (zi + 0.5))
+    offset = len(z) * sum(a**k * np.cos(2 * np.pi * b**k * 0.5) for k in range(k_max + 1))
+    return float(result - offset)
+
+
+def _griewank_core(z: np.ndarray) -> float:
+    D = len(z)
+    return float(np.sum(z**2) / 4000 - np.prod(np.cos(z / np.sqrt(np.arange(1, D + 1)))) + 1)
+
+
+def _rastrigin_core(z: np.ndarray) -> float:
+    return float(np.sum(z**2 - 10 * np.cos(2 * np.pi * z) + 10))
+
+
+def _schwefel_core(z: np.ndarray) -> float:
+    D = len(z)
+    total = 0.0
+    for zi in z:
+        if zi > 500:
+            mod = 500 - zi % 500
+            total -= mod * np.sin(np.sqrt(abs(mod)))
+            total += ((zi - 500) / 100) ** 2 / D
+        elif zi < -500:
+            mod = abs(zi) % 500 - 500
+            total -= mod * np.sin(np.sqrt(abs(mod)))
+            total += ((zi + 500) / 100) ** 2 / D
+        else:
+            total -= zi * np.sin(np.sqrt(abs(zi)))
+    return float(_SCHWEFEL_OFFSET * D + total)
+
+
+def _katsuura_core(z: np.ndarray) -> float:
+    D = len(z)
+    result = 1.0
+    for i, zi in enumerate(z):
+        inner_sum = 0.0
+        for j in range(1, 33):
+            pow2 = 2**j
+            inner_sum += abs(pow2 * zi - round(pow2 * zi)) / pow2
+        result *= (1 + (i + 1) * inner_sum) ** (10 / (D**1.2))
+    return float((10 / D**2) * result - (10 / D**2))
+
+
+def _expanded_griewank_rosenbrock_core(z: np.ndarray) -> float:
+    z_next = np.roll(z, -1)
+    t = 100 * (z**2 - z_next) ** 2 + (z - 1) ** 2
+    return float(np.sum(t**2 / 4000 - np.cos(t) + 1))
+
+
+def _expanded_schaffer_f6_core(z: np.ndarray) -> float:
+    z_next = np.roll(z, -1)
+    t = z**2 + z_next**2
+    return float(np.sum(0.5 + (np.sin(np.sqrt(t)) ** 2 - 0.5) / (1 + 0.001 * t) ** 2))
+
+
+def _batch_sphere_core(Z: ArrayLike) -> ArrayLike:
+    xp = get_array_namespace(Z)
+    return xp.sum(Z**2, axis=1)
+
+
+def _batch_elliptic_core(Z: ArrayLike) -> ArrayLike:
+    xp = get_array_namespace(Z)
+    D = Z.shape[1]
+    if D <= 1:
+        return Z[:, 0] ** 2
+    idx = xp.arange(D, dtype=Z.dtype)
+    coeffs = xp.power(1e6, idx / (D - 1))
+    return xp.sum(coeffs * Z**2, axis=1)
+
+
+def _batch_different_powers_core(Z: ArrayLike) -> ArrayLike:
+    xp = get_array_namespace(Z)
+    D = Z.shape[1]
+    if D <= 1:
+        return xp.abs(Z[:, 0]) ** 2
+    idx = xp.arange(D, dtype=Z.dtype)
+    exponents = 2 + 4 * idx / (D - 1)
+    return xp.sqrt(xp.sum(xp.abs(Z) ** exponents, axis=1))
+
+
+def _batch_bent_cigar_core(Z: ArrayLike) -> ArrayLike:
+    xp = get_array_namespace(Z)
+    if Z.shape[1] <= 1:
+        return Z[:, 0] ** 2
+    return Z[:, 0] ** 2 + 1e6 * xp.sum(Z[:, 1:] ** 2, axis=1)
+
+
+def _batch_discus_core(Z: ArrayLike) -> ArrayLike:
+    xp = get_array_namespace(Z)
+    if Z.shape[1] <= 1:
+        return 1e6 * Z[:, 0] ** 2
+    return 1e6 * Z[:, 0] ** 2 + xp.sum(Z[:, 1:] ** 2, axis=1)
+
+
+def _batch_rosenbrock_core(Z: ArrayLike) -> ArrayLike:
+    xp = get_array_namespace(Z)
+    return xp.sum(100 * (Z[:, :-1] ** 2 - Z[:, 1:]) ** 2 + (Z[:, :-1] - 1) ** 2, axis=1)
+
+
+def _batch_schaffer_f7_core(Z: ArrayLike) -> ArrayLike:
+    xp = get_array_namespace(Z)
+    D = Z.shape[1]
+    S = xp.sqrt(Z[:, :-1] ** 2 + Z[:, 1:] ** 2)
+    result = xp.sum(xp.sqrt(S) * (xp.sin(50 * S**0.2) ** 2 + 1), axis=1)
+    return (result / (D - 1)) ** 2
+
+
+def _batch_ackley_core(Z: ArrayLike) -> ArrayLike:
+    xp = get_array_namespace(Z)
+    D = Z.shape[1]
+    sum1 = xp.sum(Z**2, axis=1)
+    sum2 = xp.sum(xp.cos(2 * math.pi * Z), axis=1)
+    return -20 * xp.exp(-0.2 * xp.sqrt(sum1 / D)) - xp.exp(sum2 / D) + 20 + math.e
+
+
+def _batch_weierstrass_core(Z: ArrayLike) -> ArrayLike:
+    xp = get_array_namespace(Z)
+    a = 0.5
+    b = 3
+    k_max = 20
+    D = Z.shape[1]
+    k = xp.arange(k_max + 1, dtype=Z.dtype)
+    a_k = a**k
+    b_k = b**k
+    cos_terms = a_k * xp.cos(2 * math.pi * b_k * (Z[:, :, None] + 0.5))
+    offset = D * xp.sum(a_k * xp.cos(2 * math.pi * b_k * 0.5))
+    return xp.sum(cos_terms, axis=(1, 2)) - offset
+
+
+def _batch_griewank_core(Z: ArrayLike) -> ArrayLike:
+    xp = get_array_namespace(Z)
+    D = Z.shape[1]
+    idx = xp.sqrt(xp.arange(1, D + 1, dtype=Z.dtype))
+    return xp.sum(Z**2, axis=1) / 4000 - xp.prod(xp.cos(Z / idx), axis=1) + 1
+
+
+def _batch_rastrigin_core(Z: ArrayLike) -> ArrayLike:
+    xp = get_array_namespace(Z)
+    return xp.sum(Z**2 - 10 * xp.cos(2 * math.pi * Z) + 10, axis=1)
+
+
+def _batch_schwefel_core(Z: ArrayLike) -> ArrayLike:
+    xp = get_array_namespace(Z)
+    D = Z.shape[1]
+    term_inside = -Z * xp.sin(xp.sqrt(xp.abs(Z)))
+
+    mod_pos = 500 - xp.mod(Z, 500)
+    term_pos = -mod_pos * xp.sin(xp.sqrt(xp.abs(mod_pos))) + ((Z - 500) / 100) ** 2 / D
+
+    mod_neg = xp.mod(xp.abs(Z), 500) - 500
+    term_neg = -mod_neg * xp.sin(xp.sqrt(xp.abs(mod_neg))) + ((Z + 500) / 100) ** 2 / D
+
+    terms = xp.where(Z > 500, term_pos, xp.where(Z < -500, term_neg, term_inside))
+    return _SCHWEFEL_OFFSET * D + xp.sum(terms, axis=1)
+
+
+def _batch_katsuura_core(Z: ArrayLike) -> ArrayLike:
+    xp = get_array_namespace(Z)
+    D = Z.shape[1]
+    j = xp.arange(1, 33, dtype=Z.dtype)
+    pow2 = xp.power(2.0, j)
+    scaled = Z[:, :, None] * pow2
+    inner = xp.sum(xp.abs(scaled - xp.round(scaled)) / pow2, axis=2)
+    idx = xp.arange(1, D + 1, dtype=Z.dtype)
+    result = xp.prod((1 + idx * inner) ** (10 / (D**1.2)), axis=1)
+    return (10 / D**2) * result - (10 / D**2)
+
+
+def _batch_expanded_griewank_rosenbrock_core(Z: ArrayLike) -> ArrayLike:
+    xp = get_array_namespace(Z)
+    Z_next = xp.roll(Z, -1, axis=1)
+    T = 100 * (Z**2 - Z_next) ** 2 + (Z - 1) ** 2
+    return xp.sum(T**2 / 4000 - xp.cos(T) + 1, axis=1)
+
+
+def _batch_expanded_schaffer_f6_core(Z: ArrayLike) -> ArrayLike:
+    xp = get_array_namespace(Z)
+    Z_next = xp.roll(Z, -1, axis=1)
+    T = Z**2 + Z_next**2
+    return xp.sum(0.5 + (xp.sin(xp.sqrt(T)) ** 2 - 0.5) / (1 + 0.001 * T) ** 2, axis=1)
+
+
+def _component_value(
+    func: CEC2013Function,
+    x: np.ndarray,
+    component: str,
+    shift_index: int,
+    rotation_index: int = 1,
+) -> float:
+    z = _component_z(func, x, component, shift_index, rotation_index)
+    return _COMPONENT_CORES[component](z)
+
+
+def _batch_component_value(
+    func: CEC2013Function,
+    X: ArrayLike,
+    component: str,
+    shift_index: int,
+    rotation_index: int = 1,
+) -> ArrayLike:
+    Z = _batch_component_z(func, X, component, shift_index, rotation_index)
+    return _BATCH_COMPONENT_CORES[component](Z)
+
+
+def _component_z(
+    func: CEC2013Function,
+    x: np.ndarray,
+    component: str,
+    shift_index: int,
+    rotation_index: int = 1,
+) -> np.ndarray:
+    if component == "sphere":
+        return _shift_with_index(func, x, shift_index)
+    if component == "elliptic":
+        z = _rotate_with_index(func, _shift_with_index(func, x, shift_index), rotation_index)
+        return _osz_endpoints(z)
+    if component == "bent_cigar":
+        z = _rotate_with_index(func, _shift_with_index(func, x, shift_index), rotation_index)
+        z = func._asymmetric(z, 0.5)
+        return _rotate_with_index(func, z, rotation_index + 1)
+    if component == "discus":
+        z = _rotate_with_index(func, _shift_with_index(func, x, shift_index), rotation_index)
+        return _osz_endpoints(z)
+    if component == "different_powers":
+        return _rotate_with_index(func, _shift_with_index(func, x, shift_index), rotation_index)
+    if component == "rosenbrock":
+        z = _rotate_with_index(
+            func, _shift_with_index(func, x, shift_index) * 2.048 / 100, rotation_index
+        )
+        return z + 1
+    if component == "schaffer_f7":
+        z = _rotate_with_index(func, _shift_with_index(func, x, shift_index), rotation_index)
+        z = func._asymmetric(z, 0.5)
+        z = _lambda_scale_np(z, 10)
+        return _rotate_with_index(func, z, rotation_index + 1)
+    if component == "ackley":
+        z = _rotate_with_index(func, _shift_with_index(func, x, shift_index), rotation_index)
+        z = func._asymmetric(z, 0.5)
+        z = _lambda_scale_np(z, 10)
+        return _rotate_with_index(func, z, rotation_index + 1)
+    if component == "weierstrass":
+        z = _rotate_with_index(
+            func, _shift_with_index(func, x, shift_index) * 0.5 / 100, rotation_index
+        )
+        z = func._asymmetric(z, 0.5)
+        z = _lambda_scale_np(z, 10)
+        return _rotate_with_index(func, z, rotation_index + 1)
+    if component == "griewank":
+        z = _rotate_with_index(
+            func, _shift_with_index(func, x, shift_index) * 600 / 100, rotation_index
+        )
+        return _lambda_scale_np(z, 100)
+    if component == "rastrigin":
+        z = _shift_with_index(func, x, shift_index) * 5.12 / 100
+        z = _osz_endpoints(z)
+        z = func._asymmetric(z, 0.2)
+        return _lambda_scale_np(z, 10)
+    if component == "rotated_rastrigin":
+        z = _rotate_with_index(
+            func, _shift_with_index(func, x, shift_index) * 5.12 / 100, rotation_index
+        )
+        z = _osz_endpoints(z)
+        z = func._asymmetric(z, 0.2)
+        z = _rotate_with_index(func, z, rotation_index + 1)
+        z = _lambda_scale_np(z, 10)
+        return _rotate_with_index(func, z, rotation_index)
+    if component == "step_rastrigin":
+        z = _rotate_with_index(
+            func, _shift_with_index(func, x, shift_index) * 5.12 / 100, rotation_index
+        )
+        z = np.where(np.abs(z) > 0.5, np.floor(2 * z + 0.5) / 2, z)
+        z = _osz_endpoints(z)
+        z = func._asymmetric(z, 0.2)
+        z = _rotate_with_index(func, z, rotation_index + 1)
+        z = _lambda_scale_np(z, 10)
+        return _rotate_with_index(func, z, rotation_index)
+    if component == "schwefel":
+        z = _shift_with_index(func, x, shift_index) * 1000 / 100
+        z = _lambda_scale_np(z, 10)
+        return z + _SCHWEFEL_OPTIMUM
+    if component == "rotated_schwefel":
+        z = _rotate_with_index(
+            func, _shift_with_index(func, x, shift_index) * 1000 / 100, rotation_index
+        )
+        z = _lambda_scale_np(z, 10)
+        return z + _SCHWEFEL_OPTIMUM
+    if component == "katsuura":
+        z = _rotate_with_index(
+            func, _shift_with_index(func, x, shift_index) * 5 / 100, rotation_index
+        )
+        z = _lambda_scale_np(z, 100)
+        return _rotate_with_index(func, z, rotation_index + 1)
+    if component == "expanded_griewank_rosenbrock":
+        z = _rotate_with_index(
+            func, _shift_with_index(func, x, shift_index) * 5 / 100, rotation_index
+        )
+        return z + 1
+    if component == "expanded_schaffer_f6":
+        z = _rotate_with_index(func, _shift_with_index(func, x, shift_index), rotation_index)
+        z = func._asymmetric(z, 0.5)
+        return _rotate_with_index(func, z, rotation_index + 1)
+    raise ValueError(f"Unknown CEC2013 component: {component}")
+
+
+def _batch_component_z(
+    func: CEC2013Function,
+    X: ArrayLike,
+    component: str,
+    shift_index: int,
+    rotation_index: int = 1,
+) -> ArrayLike:
+    xp = get_array_namespace(X)
+    if component == "sphere":
+        return _batch_shift_with_index(func, X, shift_index)
+    if component == "elliptic":
+        Z = _batch_rotate_with_index(
+            func, _batch_shift_with_index(func, X, shift_index), rotation_index
+        )
+        return _batch_osz_endpoints(Z)
+    if component == "bent_cigar":
+        Z = _batch_rotate_with_index(
+            func, _batch_shift_with_index(func, X, shift_index), rotation_index
+        )
+        Z = func._batch_asymmetric(Z, 0.5)
+        return _batch_rotate_with_index(func, Z, rotation_index + 1)
+    if component == "discus":
+        Z = _batch_rotate_with_index(
+            func, _batch_shift_with_index(func, X, shift_index), rotation_index
+        )
+        return _batch_osz_endpoints(Z)
+    if component == "different_powers":
+        return _batch_rotate_with_index(
+            func, _batch_shift_with_index(func, X, shift_index), rotation_index
+        )
+    if component == "rosenbrock":
+        Z = _batch_rotate_with_index(
+            func, _batch_shift_with_index(func, X, shift_index) * 2.048 / 100, rotation_index
+        )
+        return Z + 1
+    if component == "schaffer_f7":
+        Z = _batch_rotate_with_index(
+            func, _batch_shift_with_index(func, X, shift_index), rotation_index
+        )
+        Z = func._batch_asymmetric(Z, 0.5)
+        Z = _batch_lambda_scale_xp(Z, 10)
+        return _batch_rotate_with_index(func, Z, rotation_index + 1)
+    if component == "ackley":
+        Z = _batch_rotate_with_index(
+            func, _batch_shift_with_index(func, X, shift_index), rotation_index
+        )
+        Z = func._batch_asymmetric(Z, 0.5)
+        Z = _batch_lambda_scale_xp(Z, 10)
+        return _batch_rotate_with_index(func, Z, rotation_index + 1)
+    if component == "weierstrass":
+        Z = _batch_rotate_with_index(
+            func, _batch_shift_with_index(func, X, shift_index) * 0.5 / 100, rotation_index
+        )
+        Z = func._batch_asymmetric(Z, 0.5)
+        Z = _batch_lambda_scale_xp(Z, 10)
+        return _batch_rotate_with_index(func, Z, rotation_index + 1)
+    if component == "griewank":
+        Z = _batch_rotate_with_index(
+            func, _batch_shift_with_index(func, X, shift_index) * 600 / 100, rotation_index
+        )
+        return _batch_lambda_scale_xp(Z, 100)
+    if component == "rastrigin":
+        Z = _batch_shift_with_index(func, X, shift_index) * 5.12 / 100
+        Z = _batch_osz_endpoints(Z)
+        Z = func._batch_asymmetric(Z, 0.2)
+        return _batch_lambda_scale_xp(Z, 10)
+    if component == "rotated_rastrigin":
+        Z = _batch_rotate_with_index(
+            func, _batch_shift_with_index(func, X, shift_index) * 5.12 / 100, rotation_index
+        )
+        Z = _batch_osz_endpoints(Z)
+        Z = func._batch_asymmetric(Z, 0.2)
+        Z = _batch_rotate_with_index(func, Z, rotation_index + 1)
+        Z = _batch_lambda_scale_xp(Z, 10)
+        return _batch_rotate_with_index(func, Z, rotation_index)
+    if component == "step_rastrigin":
+        Z = _batch_rotate_with_index(
+            func, _batch_shift_with_index(func, X, shift_index) * 5.12 / 100, rotation_index
+        )
+        Z = xp.where(xp.abs(Z) > 0.5, xp.floor(2 * Z + 0.5) / 2, Z)
+        Z = _batch_osz_endpoints(Z)
+        Z = func._batch_asymmetric(Z, 0.2)
+        Z = _batch_rotate_with_index(func, Z, rotation_index + 1)
+        Z = _batch_lambda_scale_xp(Z, 10)
+        return _batch_rotate_with_index(func, Z, rotation_index)
+    if component == "schwefel":
+        Z = _batch_shift_with_index(func, X, shift_index) * 1000 / 100
+        Z = _batch_lambda_scale_xp(Z, 10)
+        return Z + _SCHWEFEL_OPTIMUM
+    if component == "rotated_schwefel":
+        Z = _batch_rotate_with_index(
+            func, _batch_shift_with_index(func, X, shift_index) * 1000 / 100, rotation_index
+        )
+        Z = _batch_lambda_scale_xp(Z, 10)
+        return Z + _SCHWEFEL_OPTIMUM
+    if component == "katsuura":
+        Z = _batch_rotate_with_index(
+            func, _batch_shift_with_index(func, X, shift_index) * 5 / 100, rotation_index
+        )
+        Z = _batch_lambda_scale_xp(Z, 100)
+        return _batch_rotate_with_index(func, Z, rotation_index + 1)
+    if component == "expanded_griewank_rosenbrock":
+        Z = _batch_rotate_with_index(
+            func, _batch_shift_with_index(func, X, shift_index) * 5 / 100, rotation_index
+        )
+        return Z + 1
+    if component == "expanded_schaffer_f6":
+        Z = _batch_rotate_with_index(
+            func, _batch_shift_with_index(func, X, shift_index), rotation_index
+        )
+        Z = func._batch_asymmetric(Z, 0.5)
+        return _batch_rotate_with_index(func, Z, rotation_index + 1)
+    raise ValueError(f"Unknown CEC2013 component: {component}")
+
+
+_COMPONENT_CORES = {
+    "sphere": _sphere_core,
+    "elliptic": _elliptic_core,
+    "bent_cigar": _bent_cigar_core,
+    "discus": _discus_core,
+    "different_powers": _different_powers_core,
+    "rosenbrock": _rosenbrock_core,
+    "schaffer_f7": _schaffer_f7_core,
+    "ackley": _ackley_core,
+    "weierstrass": _weierstrass_core,
+    "griewank": _griewank_core,
+    "rastrigin": _rastrigin_core,
+    "rotated_rastrigin": _rastrigin_core,
+    "step_rastrigin": _rastrigin_core,
+    "schwefel": _schwefel_core,
+    "rotated_schwefel": _schwefel_core,
+    "katsuura": _katsuura_core,
+    "expanded_griewank_rosenbrock": _expanded_griewank_rosenbrock_core,
+    "expanded_schaffer_f6": _expanded_schaffer_f6_core,
+}
+
+
+_BATCH_COMPONENT_CORES = {
+    "sphere": _batch_sphere_core,
+    "elliptic": _batch_elliptic_core,
+    "bent_cigar": _batch_bent_cigar_core,
+    "discus": _batch_discus_core,
+    "different_powers": _batch_different_powers_core,
+    "rosenbrock": _batch_rosenbrock_core,
+    "schaffer_f7": _batch_schaffer_f7_core,
+    "ackley": _batch_ackley_core,
+    "weierstrass": _batch_weierstrass_core,
+    "griewank": _batch_griewank_core,
+    "rastrigin": _batch_rastrigin_core,
+    "rotated_rastrigin": _batch_rastrigin_core,
+    "step_rastrigin": _batch_rastrigin_core,
+    "schwefel": _batch_schwefel_core,
+    "rotated_schwefel": _batch_schwefel_core,
+    "katsuura": _batch_katsuura_core,
+    "expanded_griewank_rosenbrock": _batch_expanded_griewank_rosenbrock_core,
+    "expanded_schaffer_f6": _batch_expanded_schaffer_f6_core,
+}
+
+
+def _lunacek_bi_rastrigin_value(
+    func: CEC2013Function,
+    x: np.ndarray,
+    shift_index: int,
+    rotated: bool,
+) -> float:
+    D = len(x)
+    mu0 = 2.5
+    d = 1.0
+    s = 1 - 1 / (2 * np.sqrt(D + 20) - 8.2)
+    mu1 = -np.sqrt((mu0**2 - d) / s)
+    shift = func._get_shift_vector(shift_index)
+
+    y = (x - shift) * 10 / 100
+    x_hat = 2 * np.where(shift < 0, -1.0, 1.0) * y + mu0
+    z = x_hat - mu0
+    if rotated:
+        z = _rotate_with_index(func, z, 1)
+        z = _lambda_scale_np(z, 100)
+        z = _rotate_with_index(func, z, 2)
+    else:
+        z = _lambda_scale_np(z, 100)
+
+    sum1 = np.sum((x_hat - mu0) ** 2)
+    sum2 = np.sum((x_hat - mu1) ** 2)
+    sum3 = np.sum(np.cos(2 * np.pi * z))
+    return float(min(sum1, d * D + s * sum2) + 10 * (D - sum3))
+
+
+def _batch_lunacek_bi_rastrigin_value(
+    func: CEC2013Function,
+    X: ArrayLike,
+    shift_index: int,
+    rotated: bool,
+) -> ArrayLike:
+    xp = get_array_namespace(X)
+    D = X.shape[1]
+    mu0 = 2.5
+    d = 1.0
+    s = 1 - 1 / (2 * math.sqrt(D + 20) - 8.2)
+    mu1 = -math.sqrt((mu0**2 - d) / s)
+    shift = xp.asarray(func._get_shift_vector(shift_index), dtype=X.dtype)
+
+    Y = (X - shift) * 10 / 100
+    X_hat = 2 * xp.where(shift < 0, -1.0, 1.0) * Y + mu0
+    Z = X_hat - mu0
+    if rotated:
+        Z = _batch_rotate_with_index(func, Z, 1)
+        Z = _batch_lambda_scale_xp(Z, 100)
+        Z = _batch_rotate_with_index(func, Z, 2)
+    else:
+        Z = _batch_lambda_scale_xp(Z, 100)
+
+    sum1 = xp.sum((X_hat - mu0) ** 2, axis=1)
+    sum2 = xp.sum((X_hat - mu1) ** 2, axis=1)
+    sum3 = xp.sum(xp.cos(2 * math.pi * Z), axis=1)
+    return xp.minimum(sum1, d * D + s * sum2) + 10 * (D - sum3)
+
 
 class Sphere(CEC2013Function):
     """F1: Sphere Function.
@@ -70,28 +727,11 @@ class RotatedHighConditionedElliptic(CEC2013Function):
 
     def _objective(self, params: Dict[str, Any]) -> float:
         x = self._params_to_array(params)
-        z = self._oscillation(self._shift_rotate(x))
-
-        D = self.n_dim
-        result = 0.0
-        for i in range(D):
-            result += (10**6) ** (i / (D - 1)) * z[i] ** 2
-
-        return result + self.f_global
+        return _component_value(self, x, "elliptic", self.shift_index) + self.f_global
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
         """Vectorized batch evaluation."""
-        xp = get_array_namespace(X)
-        D = self.n_dim
-
-        Z = self._batch_shift_rotate(X)
-        Z = self._batch_oscillation(Z)
-
-        # coeffs = 10^6^(i/(D-1))
-        i = xp.arange(D, dtype=X.dtype)
-        coeffs = xp.power(1e6, i / (D - 1)) if D > 1 else xp.ones(1, dtype=X.dtype)
-
-        return xp.sum(coeffs * Z**2, axis=1) + self.f_global
+        return _batch_component_value(self, X, "elliptic", self.shift_index) + self.f_global
 
 
 class RotatedBentCigar(CEC2013Function):
@@ -117,18 +757,11 @@ class RotatedBentCigar(CEC2013Function):
 
     def _objective(self, params: Dict[str, Any]) -> float:
         x = self._params_to_array(params)
-        z = self._asymmetric(self._shift_rotate(x), 0.5)
-        z = self._rotate(z)
-
-        return z[0] ** 2 + 10**6 * np.sum(z[1:] ** 2) + self.f_global
+        return _component_value(self, x, "bent_cigar", self.shift_index) + self.f_global
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
         """Vectorized batch evaluation."""
-        xp = get_array_namespace(X)
-        Z = self._batch_shift_rotate(X)
-        Z = self._batch_asymmetric(Z, 0.5)
-        Z = self._batch_rotate(Z, self.shift_index)
-        return Z[:, 0] ** 2 + 1e6 * xp.sum(Z[:, 1:] ** 2, axis=1) + self.f_global
+        return _batch_component_value(self, X, "bent_cigar", self.shift_index) + self.f_global
 
 
 class RotatedDiscus(CEC2013Function):
@@ -154,16 +787,11 @@ class RotatedDiscus(CEC2013Function):
 
     def _objective(self, params: Dict[str, Any]) -> float:
         x = self._params_to_array(params)
-        z = self._oscillation(self._shift_rotate(x))
-
-        return 10**6 * z[0] ** 2 + np.sum(z[1:] ** 2) + self.f_global
+        return _component_value(self, x, "discus", self.shift_index) + self.f_global
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
         """Vectorized batch evaluation."""
-        xp = get_array_namespace(X)
-        Z = self._batch_shift_rotate(X)
-        Z = self._batch_oscillation(Z)
-        return 1e6 * Z[:, 0] ** 2 + xp.sum(Z[:, 1:] ** 2, axis=1) + self.f_global
+        return _batch_component_value(self, X, "discus", self.shift_index) + self.f_global
 
 
 class DifferentPowers(CEC2013Function):
@@ -188,28 +816,13 @@ class DifferentPowers(CEC2013Function):
 
     def _objective(self, params: Dict[str, Any]) -> float:
         x = self._params_to_array(params)
-        z = self._shift(x)
-
-        D = self.n_dim
-        result = 0.0
-        for i in range(D):
-            result += abs(z[i]) ** (2 + 4 * i / (D - 1))
-
-        return np.sqrt(result) + self.f_global
+        z = _shift_with_index(self, x, self.shift_index)
+        return _different_powers_core(z) + self.f_global
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
         """Vectorized batch evaluation."""
-        xp = get_array_namespace(X)
-        D = self.n_dim
-
-        Z = self._batch_shift(X, self.shift_index)
-
-        # exponents = 2 + 4 * i / (D - 1)
-        i = xp.arange(D, dtype=X.dtype)
-        exponents = 2 + 4 * i / (D - 1) if D > 1 else 2 * xp.ones(1, dtype=X.dtype)
-
-        result = xp.sum(xp.abs(Z) ** exponents, axis=1)
-        return xp.sqrt(result) + self.f_global
+        Z = _batch_shift_with_index(self, X, self.shift_index)
+        return _batch_different_powers_core(Z) + self.f_global
 
 
 class RotatedRosenbrock(CEC2013Function):
@@ -234,24 +847,11 @@ class RotatedRosenbrock(CEC2013Function):
 
     def _objective(self, params: Dict[str, Any]) -> float:
         x = self._params_to_array(params)
-        z = self._shift_rotate(x)
-        z = z * 2.048 / 100 + 1
-
-        result = 0.0
-        for i in range(self.n_dim - 1):
-            result += 100 * (z[i] ** 2 - z[i + 1]) ** 2 + (z[i] - 1) ** 2
-
-        return result + self.f_global
+        return _component_value(self, x, "rosenbrock", self.shift_index) + self.f_global
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
         """Vectorized batch evaluation."""
-        xp = get_array_namespace(X)
-        Z = self._batch_shift_rotate(X)
-        Z = Z * 2.048 / 100 + 1
-
-        # Rosenbrock: sum of 100*(z[i]^2 - z[i+1])^2 + (z[i] - 1)^2
-        result = xp.sum(100 * (Z[:, :-1] ** 2 - Z[:, 1:]) ** 2 + (Z[:, :-1] - 1) ** 2, axis=1)
-        return result + self.f_global
+        return _batch_component_value(self, X, "rosenbrock", self.shift_index) + self.f_global
 
 
 class RotatedSchafferF7(CEC2013Function):
@@ -276,41 +876,11 @@ class RotatedSchafferF7(CEC2013Function):
 
     def _objective(self, params: Dict[str, Any]) -> float:
         x = self._params_to_array(params)
-        z = self._asymmetric(self._shift_rotate(x), 0.5)
-        z = self._lambda_scale(z, 10)
-        z = self._rotate(z)
-
-        D = self.n_dim
-        s = np.zeros(D - 1)
-        for i in range(D - 1):
-            s[i] = np.sqrt(z[i] ** 2 + z[i + 1] ** 2)
-
-        result = 0.0
-        for i in range(D - 1):
-            result += np.sqrt(s[i]) * (np.sin(50 * s[i] ** 0.2) ** 2 + 1)
-
-        result = (result / (D - 1)) ** 2
-
-        return result + self.f_global
+        return _component_value(self, x, "schaffer_f7", self.shift_index) + self.f_global
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
         """Vectorized batch evaluation."""
-        xp = get_array_namespace(X)
-        D = self.n_dim
-
-        Z = self._batch_shift_rotate(X)
-        Z = self._batch_asymmetric(Z, 0.5)
-        Z = self._batch_lambda_scale(Z, 10)
-        Z = self._batch_rotate(Z, self.shift_index)
-
-        # s[i] = sqrt(z[i]^2 + z[i+1]^2)
-        S = xp.sqrt(Z[:, :-1] ** 2 + Z[:, 1:] ** 2)
-
-        # sum(sqrt(s) * (sin(50 * s^0.2)^2 + 1))
-        result = xp.sum(xp.sqrt(S) * (xp.sin(50 * S**0.2) ** 2 + 1), axis=1)
-        result = (result / (D - 1)) ** 2
-
-        return result + self.f_global
+        return _batch_component_value(self, X, "schaffer_f7", self.shift_index) + self.f_global
 
 
 class RotatedAckley(CEC2013Function):
@@ -335,34 +905,11 @@ class RotatedAckley(CEC2013Function):
 
     def _objective(self, params: Dict[str, Any]) -> float:
         x = self._params_to_array(params)
-        z = self._asymmetric(self._shift_rotate(x), 0.5)
-        z = self._lambda_scale(z, 10)
-        z = self._rotate(z)
-
-        D = self.n_dim
-        sum1 = np.sum(z**2)
-        sum2 = np.sum(np.cos(2 * np.pi * z))
-
-        result = -20 * np.exp(-0.2 * np.sqrt(sum1 / D)) - np.exp(sum2 / D) + 20 + np.e
-
-        return result + self.f_global
+        return _component_value(self, x, "ackley", self.shift_index) + self.f_global
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
         """Vectorized batch evaluation."""
-        xp = get_array_namespace(X)
-        D = self.n_dim
-
-        Z = self._batch_shift_rotate(X)
-        Z = self._batch_asymmetric(Z, 0.5)
-        Z = self._batch_lambda_scale(Z, 10)
-        Z = self._batch_rotate(Z, self.shift_index)
-
-        sum1 = xp.sum(Z**2, axis=1)
-        sum2 = xp.sum(xp.cos(2 * math.pi * Z), axis=1)
-
-        result = -20 * xp.exp(-0.2 * xp.sqrt(sum1 / D)) - xp.exp(sum2 / D) + 20 + math.e
-
-        return result + self.f_global
+        return _batch_component_value(self, X, "ackley", self.shift_index) + self.f_global
 
 
 class RotatedWeierstrass(CEC2013Function):
@@ -388,59 +935,12 @@ class RotatedWeierstrass(CEC2013Function):
     }
 
     def _objective(self, params: Dict[str, Any]) -> float:
-        a = 0.5
-        b = 3
-        k_max = 20
-
         x = self._params_to_array(params)
-        z = self._asymmetric(self._shift_rotate(x), 0.5)
-        z = self._lambda_scale(z, 10)
-        z = self._rotate(z)
-        z = z * 0.5 / 100
-
-        D = self.n_dim
-        result = 0.0
-        for i in range(D):
-            for k in range(k_max + 1):
-                result += a**k * np.cos(2 * np.pi * b**k * (z[i] + 0.5))
-
-        offset = D * sum(a**k * np.cos(2 * np.pi * b**k * 0.5) for k in range(k_max + 1))
-        result -= offset
-
-        return result + self.f_global
+        return _component_value(self, x, "weierstrass", self.shift_index) + self.f_global
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
         """Vectorized batch evaluation."""
-        xp = get_array_namespace(X)
-        D = self.n_dim
-
-        a = 0.5
-        b = 3
-        k_max = 20
-
-        Z = self._batch_shift_rotate(X)
-        Z = self._batch_asymmetric(Z, 0.5)
-        Z = self._batch_lambda_scale(Z, 10)
-        Z = self._batch_rotate(Z, self.shift_index)
-        Z = Z * 0.5 / 100
-
-        # Precompute offset
-        k = xp.arange(k_max + 1, dtype=X.dtype)
-        f0 = xp.sum(a**k * xp.cos(2 * math.pi * b**k * 0.5))
-
-        # Vectorize double loop using 3D broadcasting
-        # Z[:, :, None] has shape (n_points, D, 1)
-        # b**k has shape (k_max+1,)
-        b_pow_k = b**k  # (k_max+1,)
-        a_pow_k = a**k  # (k_max+1,)
-
-        cos_args = 2 * math.pi * (Z[:, :, None] + 0.5) * b_pow_k
-        cos_terms = a_pow_k * xp.cos(cos_args)  # (n_points, D, k_max+1)
-
-        result = xp.sum(cos_terms, axis=(1, 2))  # sum over D and k
-        result -= D * f0
-
-        return result + self.f_global
+        return _batch_component_value(self, X, "weierstrass", self.shift_index) + self.f_global
 
 
 class RotatedGriewank(CEC2013Function):
@@ -465,30 +965,11 @@ class RotatedGriewank(CEC2013Function):
 
     def _objective(self, params: Dict[str, Any]) -> float:
         x = self._params_to_array(params)
-        z = self._shift_rotate(x)
-        z = z * 600 / 100
-
-        D = self.n_dim
-        sum_sq = np.sum(z**2) / 4000
-        prod_cos = np.prod(np.cos(z / np.sqrt(np.arange(1, D + 1))))
-
-        return sum_sq - prod_cos + 1 + self.f_global
+        return _component_value(self, x, "griewank", self.shift_index) + self.f_global
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
         """Vectorized batch evaluation."""
-        xp = get_array_namespace(X)
-        D = self.n_dim
-
-        Z = self._batch_shift_rotate(X)
-        Z = Z * 600 / 100
-
-        # sqrt(i) for i = 1 to D
-        sqrt_i = xp.sqrt(xp.arange(1, D + 1, dtype=X.dtype))
-
-        sum_sq = xp.sum(Z**2, axis=1) / 4000
-        prod_cos = xp.prod(xp.cos(Z / sqrt_i), axis=1)
-
-        return sum_sq - prod_cos + 1 + self.f_global
+        return _batch_component_value(self, X, "griewank", self.shift_index) + self.f_global
 
 
 class Rastrigin(CEC2013Function):
@@ -513,29 +994,11 @@ class Rastrigin(CEC2013Function):
 
     def _objective(self, params: Dict[str, Any]) -> float:
         x = self._params_to_array(params)
-        z = self._oscillation(self._asymmetric(self._shift(x), 0.2))
-        z = self._lambda_scale(z, 10)
-        z = z * 5.12 / 100
-
-        D = self.n_dim
-        result = 10 * D + np.sum(z**2 - 10 * np.cos(2 * np.pi * z))
-
-        return result + self.f_global
+        return _component_value(self, x, "rastrigin", self.shift_index) + self.f_global
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
         """Vectorized batch evaluation."""
-        xp = get_array_namespace(X)
-        D = self.n_dim
-
-        Z = self._batch_shift(X, self.shift_index)
-        Z = self._batch_asymmetric(Z, 0.2)
-        Z = self._batch_oscillation(Z)
-        Z = self._batch_lambda_scale(Z, 10)
-        Z = Z * 5.12 / 100
-
-        result = 10 * D + xp.sum(Z**2 - 10 * xp.cos(2 * math.pi * Z), axis=1)
-
-        return result + self.f_global
+        return _batch_component_value(self, X, "rastrigin", self.shift_index) + self.f_global
 
 
 class RotatedRastrigin(CEC2013Function):
@@ -560,31 +1023,13 @@ class RotatedRastrigin(CEC2013Function):
 
     def _objective(self, params: Dict[str, Any]) -> float:
         x = self._params_to_array(params)
-        z = self._oscillation(self._asymmetric(self._shift_rotate(x), 0.2))
-        z = self._lambda_scale(z, 10)
-        z = self._rotate(z)
-        z = z * 5.12 / 100
-
-        D = self.n_dim
-        result = 10 * D + np.sum(z**2 - 10 * np.cos(2 * np.pi * z))
-
-        return result + self.f_global
+        return _component_value(self, x, "rotated_rastrigin", self.shift_index) + self.f_global
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
         """Vectorized batch evaluation."""
-        xp = get_array_namespace(X)
-        D = self.n_dim
-
-        Z = self._batch_shift_rotate(X)
-        Z = self._batch_asymmetric(Z, 0.2)
-        Z = self._batch_oscillation(Z)
-        Z = self._batch_lambda_scale(Z, 10)
-        Z = self._batch_rotate(Z, self.shift_index)
-        Z = Z * 5.12 / 100
-
-        result = 10 * D + xp.sum(Z**2 - 10 * xp.cos(2 * math.pi * Z), axis=1)
-
-        return result + self.f_global
+        return (
+            _batch_component_value(self, X, "rotated_rastrigin", self.shift_index) + self.f_global
+        )
 
 
 class StepRastrigin(CEC2013Function):
@@ -610,40 +1055,11 @@ class StepRastrigin(CEC2013Function):
 
     def _objective(self, params: Dict[str, Any]) -> float:
         x = self._params_to_array(params)
-        z = self._oscillation(self._asymmetric(self._shift_rotate(x), 0.2))
-        z = self._lambda_scale(z, 10)
-        z = self._rotate(z)
-        z = z * 5.12 / 100
-
-        # Step function transformation
-        y = z.copy()
-        for i in range(len(z)):
-            if abs(y[i]) > 0.5:
-                y[i] = np.round(2 * y[i]) / 2
-
-        D = self.n_dim
-        result = 10 * D + np.sum(y**2 - 10 * np.cos(2 * np.pi * y))
-
-        return result + self.f_global
+        return _component_value(self, x, "step_rastrigin", self.shift_index) + self.f_global
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
         """Vectorized batch evaluation."""
-        xp = get_array_namespace(X)
-        D = self.n_dim
-
-        Z = self._batch_shift_rotate(X)
-        Z = self._batch_asymmetric(Z, 0.2)
-        Z = self._batch_oscillation(Z)
-        Z = self._batch_lambda_scale(Z, 10)
-        Z = self._batch_rotate(Z, self.shift_index)
-        Z = Z * 5.12 / 100
-
-        # Step function: if abs(z) > 0.5, round to nearest 0.5
-        Y = xp.where(xp.abs(Z) > 0.5, xp.round(2 * Z) / 2, Z)
-
-        result = 10 * D + xp.sum(Y**2 - 10 * xp.cos(2 * math.pi * Y), axis=1)
-
-        return result + self.f_global
+        return _batch_component_value(self, X, "step_rastrigin", self.shift_index) + self.f_global
 
 
 class Schwefel(CEC2013Function):
@@ -668,51 +1084,11 @@ class Schwefel(CEC2013Function):
 
     def _objective(self, params: Dict[str, Any]) -> float:
         x = self._params_to_array(params)
-        z = self._shift(x)
-        z = z * 1000 / 100 + 4.209687462275036e2
-
-        D = self.n_dim
-        result = 0.0
-        for i in range(D):
-            zi = z[i]
-            if abs(zi) <= 500:
-                result += zi * np.sin(np.sqrt(abs(zi)))
-            elif zi > 500:
-                result += (500 - zi % 500) * np.sin(np.sqrt(abs(500 - zi % 500)))
-                result -= (zi - 500) ** 2 / (10000 * D)
-            else:
-                result += (abs(zi) % 500 - 500) * np.sin(np.sqrt(abs(abs(zi) % 500 - 500)))
-                result -= (zi + 500) ** 2 / (10000 * D)
-
-        result = 418.9829 * D - result
-
-        return result + self.f_global
+        return _component_value(self, x, "schwefel", self.shift_index) + self.f_global
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
         """Vectorized batch evaluation."""
-        xp = get_array_namespace(X)
-        D = self.n_dim
-
-        Z = self._batch_shift(X, self.shift_index)
-        Z = Z * 1000 / 100 + 4.209687462275036e2
-
-        # Case 1: abs(z) <= 500
-        case1 = xp.abs(Z) <= 500
-        term1 = Z * xp.sin(xp.sqrt(xp.abs(Z)))
-
-        # Case 2: z > 500
-        case2 = Z > 500
-        zm2 = 500 - Z % 500
-        term2 = zm2 * xp.sin(xp.sqrt(xp.abs(zm2))) - (Z - 500) ** 2 / (10000 * D)
-
-        # Case 3: z < -500 (else branch)
-        zm3 = xp.abs(Z) % 500 - 500
-        term3 = zm3 * xp.sin(xp.sqrt(xp.abs(zm3))) - (Z + 500) ** 2 / (10000 * D)
-
-        contrib = xp.where(case1, term1, xp.where(case2, term2, term3))
-        result = 418.9829 * D - xp.sum(contrib, axis=1)
-
-        return result + self.f_global
+        return _batch_component_value(self, X, "schwefel", self.shift_index) + self.f_global
 
 
 class RotatedSchwefel(CEC2013Function):
@@ -737,51 +1113,11 @@ class RotatedSchwefel(CEC2013Function):
 
     def _objective(self, params: Dict[str, Any]) -> float:
         x = self._params_to_array(params)
-        z = self._shift_rotate(x)
-        z = z * 1000 / 100 + 4.209687462275036e2
-
-        D = self.n_dim
-        result = 0.0
-        for i in range(D):
-            zi = z[i]
-            if abs(zi) <= 500:
-                result += zi * np.sin(np.sqrt(abs(zi)))
-            elif zi > 500:
-                result += (500 - zi % 500) * np.sin(np.sqrt(abs(500 - zi % 500)))
-                result -= (zi - 500) ** 2 / (10000 * D)
-            else:
-                result += (abs(zi) % 500 - 500) * np.sin(np.sqrt(abs(abs(zi) % 500 - 500)))
-                result -= (zi + 500) ** 2 / (10000 * D)
-
-        result = 418.9829 * D - result
-
-        return result + self.f_global
+        return _component_value(self, x, "rotated_schwefel", self.shift_index) + self.f_global
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
         """Vectorized batch evaluation."""
-        xp = get_array_namespace(X)
-        D = self.n_dim
-
-        Z = self._batch_shift_rotate(X)
-        Z = Z * 1000 / 100 + 4.209687462275036e2
-
-        # Case 1: abs(z) <= 500
-        case1 = xp.abs(Z) <= 500
-        term1 = Z * xp.sin(xp.sqrt(xp.abs(Z)))
-
-        # Case 2: z > 500
-        case2 = Z > 500
-        zm2 = 500 - Z % 500
-        term2 = zm2 * xp.sin(xp.sqrt(xp.abs(zm2))) - (Z - 500) ** 2 / (10000 * D)
-
-        # Case 3: z < -500 (else branch)
-        zm3 = xp.abs(Z) % 500 - 500
-        term3 = zm3 * xp.sin(xp.sqrt(xp.abs(zm3))) - (Z + 500) ** 2 / (10000 * D)
-
-        contrib = xp.where(case1, term1, xp.where(case2, term2, term3))
-        result = 418.9829 * D - xp.sum(contrib, axis=1)
-
-        return result + self.f_global
+        return _batch_component_value(self, X, "rotated_schwefel", self.shift_index) + self.f_global
 
 
 class RotatedKatsuura(CEC2013Function):
@@ -807,49 +1143,11 @@ class RotatedKatsuura(CEC2013Function):
 
     def _objective(self, params: Dict[str, Any]) -> float:
         x = self._params_to_array(params)
-        z = self._shift_rotate(x)
-        z = z * 5 / 100
-
-        D = self.n_dim
-        result = 1.0
-        for i in range(D):
-            inner_sum = 0.0
-            for j in range(1, 33):
-                inner_sum += abs(2**j * z[i] - round(2**j * z[i])) / (2**j)
-            result *= (1 + (i + 1) * inner_sum) ** (10 / (D**1.2))
-
-        result = (10 / D**2) * result - (10 / D**2)
-
-        return result + self.f_global
+        return _component_value(self, x, "katsuura", self.shift_index) + self.f_global
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
         """Vectorized batch evaluation."""
-        xp = get_array_namespace(X)
-        D = self.n_dim
-
-        Z = self._batch_shift_rotate(X)
-        Z = Z * 5 / 100
-
-        # j = 1 to 32
-        j = xp.arange(1, 33, dtype=X.dtype)
-        pow2_j = xp.power(2.0, j)  # (32,)
-
-        # Z[:, :, None] has shape (n_points, D, 1)
-        # pow2_j has shape (32,)
-        scaled = Z[:, :, None] * pow2_j  # (n_points, D, 32)
-        inner_terms = xp.abs(scaled - xp.round(scaled)) / pow2_j
-        inner_sum = xp.sum(inner_terms, axis=2)  # (n_points, D)
-
-        # (i+1) for i = 0 to D-1
-        i_plus_1 = xp.arange(1, D + 1, dtype=X.dtype)
-
-        # Product over D: prod((1 + (i+1) * inner_sum)^(10/D^1.2))
-        factors = (1 + i_plus_1 * inner_sum) ** (10 / (D**1.2))
-        result = xp.prod(factors, axis=1)
-
-        result = (10 / D**2) * result - (10 / D**2)
-
-        return result + self.f_global
+        return _batch_component_value(self, X, "katsuura", self.shift_index) + self.f_global
 
 
 class LunacekBiRastrigin(CEC2013Function):
@@ -874,50 +1172,14 @@ class LunacekBiRastrigin(CEC2013Function):
 
     def _objective(self, params: Dict[str, Any]) -> float:
         x = self._params_to_array(params)
-        shift = self._get_shift_vector()
-        y = (x - shift) * 10 / 100
-
-        z = 2 * y.copy()
-        z[shift < 0] *= -1
-
-        D = self.n_dim
-        mu0 = 2.5
-        s = 1 - 1 / (2 * np.sqrt(D + 20) - 8.2)
-        mu1 = -np.sqrt((mu0**2 - 1) / s)
-        d = 1
-
-        sum1 = np.sum((z - mu0) ** 2)
-        sum2 = np.sum((z - mu1) ** 2)
-        sum3 = np.sum(np.cos(2 * np.pi * (z - mu0)))
-
-        result = min(sum1, d * D + s * sum2) + 10 * (D - sum3)
-
-        return result + self.f_global
+        return _lunacek_bi_rastrigin_value(self, x, self.shift_index, rotated=False) + self.f_global
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
         """Vectorized batch evaluation."""
-        xp = get_array_namespace(X)
-        D = self.n_dim
-
-        shift = xp.asarray(self._get_shift_vector())
-        Y = (X - shift) * 10 / 100
-
-        Z = 2 * Y
-        sign_mask = xp.where(shift < 0, -1.0, 1.0)
-        Z = Z * sign_mask
-
-        mu0 = 2.5
-        s = 1 - 1 / (2 * math.sqrt(D + 20) - 8.2)
-        mu1 = -math.sqrt((mu0**2 - 1) / s)
-        d = 1
-
-        sum1 = xp.sum((Z - mu0) ** 2, axis=1)
-        sum2 = xp.sum((Z - mu1) ** 2, axis=1)
-        sum3 = xp.sum(xp.cos(2 * math.pi * (Z - mu0)), axis=1)
-
-        result = xp.minimum(sum1, d * D + s * sum2) + 10 * (D - sum3)
-
-        return result + self.f_global
+        return (
+            _batch_lunacek_bi_rastrigin_value(self, X, self.shift_index, rotated=False)
+            + self.f_global
+        )
 
 
 class RotatedLunacekBiRastrigin(CEC2013Function):
@@ -942,57 +1204,14 @@ class RotatedLunacekBiRastrigin(CEC2013Function):
 
     def _objective(self, params: Dict[str, Any]) -> float:
         x = self._params_to_array(params)
-        shift = self._get_shift_vector()
-        M = self._get_rotation_matrix()
-        y = (x - shift) * 10 / 100
-
-        z = 2 * y.copy()
-        z[shift < 0] *= -1
-
-        D = self.n_dim
-        mu0 = 2.5
-        s = 1 - 1 / (2 * np.sqrt(D + 20) - 8.2)
-        mu1 = -np.sqrt((mu0**2 - 1) / s)
-        d = 1
-
-        y_rot = M @ (z - mu0)
-
-        sum1 = np.sum((z - mu0) ** 2)
-        sum2 = np.sum((z - mu1) ** 2)
-        sum3 = np.sum(np.cos(2 * np.pi * y_rot))
-
-        result = min(sum1, d * D + s * sum2) + 10 * (D - sum3)
-
-        return result + self.f_global
+        return _lunacek_bi_rastrigin_value(self, x, self.shift_index, rotated=True) + self.f_global
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
         """Vectorized batch evaluation."""
-        xp = get_array_namespace(X)
-        D = self.n_dim
-
-        shift = xp.asarray(self._get_shift_vector())
-        M = xp.asarray(self._get_rotation_matrix())
-
-        Y = (X - shift) * 10 / 100
-
-        Z = 2 * Y
-        sign_mask = xp.where(shift < 0, -1.0, 1.0)
-        Z = Z * sign_mask
-
-        mu0 = 2.5
-        s = 1 - 1 / (2 * math.sqrt(D + 20) - 8.2)
-        mu1 = -math.sqrt((mu0**2 - 1) / s)
-        d = 1
-
-        Y_rot = (Z - mu0) @ M.T
-
-        sum1 = xp.sum((Z - mu0) ** 2, axis=1)
-        sum2 = xp.sum((Z - mu1) ** 2, axis=1)
-        sum3 = xp.sum(xp.cos(2 * math.pi * Y_rot), axis=1)
-
-        result = xp.minimum(sum1, d * D + s * sum2) + 10 * (D - sum3)
-
-        return result + self.f_global
+        return (
+            _batch_lunacek_bi_rastrigin_value(self, X, self.shift_index, rotated=True)
+            + self.f_global
+        )
 
 
 class RotatedExpandedGriewankRosenbrock(CEC2013Function):
@@ -1071,43 +1290,15 @@ class RotatedExpandedScafferF6(CEC2013Function):
     }
 
     def _objective(self, params: Dict[str, Any]) -> float:
-        def schaffer_f6(x1: float, x2: float) -> float:
-            t = x1**2 + x2**2
-            return 0.5 + (np.sin(np.sqrt(t)) ** 2 - 0.5) / (1 + 0.001 * t) ** 2
-
         x = self._params_to_array(params)
-        z = self._asymmetric(self._shift_rotate(x), 0.5)
-        z = self._lambda_scale(z, 10)
-        z = self._rotate(z)
-
-        D = self.n_dim
-        result = 0.0
-        for i in range(D - 1):
-            result += schaffer_f6(z[i], z[i + 1])
-        result += schaffer_f6(z[-1], z[0])
-
-        return result + self.f_global
+        return _component_value(self, x, "expanded_schaffer_f6", self.shift_index) + self.f_global
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
         """Vectorized batch evaluation."""
-        xp = get_array_namespace(X)
-
-        Z = self._batch_shift_rotate(X)
-        Z = self._batch_asymmetric(Z, 0.5)
-        Z = self._batch_lambda_scale(Z, 10)
-        Z = self._batch_rotate(Z, self.shift_index)
-
-        # z_next = roll(z, -1) for wrap-around: z_next[-1] = z[0]
-        Z_next = xp.roll(Z, -1, axis=1)
-
-        # Schaffer's F6: 0.5 + (sin(sqrt(t))^2 - 0.5) / (1 + 0.001*t)^2
-        # where t = z^2 + z_next^2
-        T = Z**2 + Z_next**2
-        schaffer = 0.5 + (xp.sin(xp.sqrt(T)) ** 2 - 0.5) / (1 + 0.001 * T) ** 2
-
-        result = xp.sum(schaffer, axis=1)
-
-        return result + self.f_global
+        return (
+            _batch_component_value(self, X, "expanded_schaffer_f6", self.shift_index)
+            + self.f_global
+        )
 
 
 class _CompositionBase(CEC2013Function):
@@ -1122,210 +1313,80 @@ class _CompositionBase(CEC2013Function):
     sigmas: list = []
     lambdas: list = []
     biases: list = []
+    component_functions: list = []
+
+    @property
+    def x_global(self) -> np.ndarray:
+        """Global optimum location, defined by the lowest-bias component."""
+        return self._get_shift_vector(1)
+
+    def _component_optima(self) -> np.ndarray:
+        return np.stack([self._get_shift_vector(i + 1) for i in range(self.n_functions)])
 
     def _compute_weights(self, x: np.ndarray) -> np.ndarray:
-        """Compute weights for each component function."""
-        weights = np.zeros(self.n_functions)
-        data = self._load_data()
+        """Compute report-specified composition weights."""
+        optima = self._component_optima()
+        diff = x[None, :] - optima
+        dist_sq = np.sum(diff**2, axis=1)
+        exact = np.flatnonzero(dist_sq == 0)
+        if len(exact) > 0:
+            weights = np.zeros(self.n_functions)
+            weights[exact[0]] = 1.0
+            return weights
 
-        for i in range(self.n_functions):
-            shift = data.get(f"shift_{i + 1}", np.zeros(self.n_dim))
-            diff = x - shift
-            dist_sq = np.sum(diff**2)
-            if dist_sq != 0:
-                weights[i] = (1.0 / np.sqrt(dist_sq)) * np.exp(
-                    -dist_sq / (2 * self.n_dim * self.sigmas[i] ** 2)
-                )
-            else:
-                weights[i] = 1e10
+        sigmas = np.asarray(self.sigmas, dtype=float)
+        weights = (1.0 / np.sqrt(dist_sq)) * np.exp(-dist_sq / (2 * self.n_dim * sigmas**2))
+        weight_sum = np.sum(weights)
+        if weight_sum == 0:
+            return np.ones(self.n_functions) / self.n_functions
+        return weights / weight_sum
 
-        max_weight = np.max(weights)
-        if max_weight == 0:
-            weights = np.ones(self.n_functions) / self.n_functions
-        else:
-            for i in range(self.n_functions):
-                if weights[i] != max_weight:
-                    weights[i] *= 1 - max_weight**10
-            weights = weights / np.sum(weights)
-
-        return weights
-
-    def _batch_compute_weights(self, X: ArrayLike, optima: ArrayLike) -> ArrayLike:
-        """Compute weights for each component function (batch version).
-
-        Parameters
-        ----------
-        X : ArrayLike
-            Input batch of shape (n_points, n_dim).
-        optima : ArrayLike
-            Optima array of shape (n_functions, n_dim).
-
-        Returns
-        -------
-        ArrayLike
-            Weights of shape (n_points, n_functions).
-        """
+    def _batch_compute_weights(self, X: ArrayLike, optima: ArrayLike = None) -> ArrayLike:
+        """Compute report-specified composition weights for a batch."""
         xp = get_array_namespace(X)
+        if optima is None:
+            optima = xp.asarray(self._component_optima(), dtype=X.dtype)
 
-        diff = X[:, None, :] - optima[None, :, :]  # (n_points, n_functions, n_dim)
-        dist_sq = xp.sum(diff**2, axis=2)  # (n_points, n_functions)
+        diff = X[:, None, :] - optima[None, :, :]
+        dist_sq = xp.sum(diff**2, axis=2)
+        exact = dist_sq == 0
+        has_exact = xp.any(exact, axis=1, keepdims=True)
 
         sigmas = xp.asarray(self.sigmas, dtype=X.dtype)
-        safe_dist_sq = xp.where(dist_sq == 0, 1.0, dist_sq)
+        safe_dist_sq = xp.where(exact, 1.0, dist_sq)
         weights = (1.0 / xp.sqrt(safe_dist_sq)) * xp.exp(-dist_sq / (2 * self.n_dim * sigmas**2))
-
-        weights = xp.where(dist_sq == 0, 1e10, weights)
-
-        max_weight = xp.max(weights, axis=1, keepdims=True)
-
-        is_max = weights == max_weight
-        weights = xp.where(is_max, weights, weights * (1 - max_weight**10))
-
         weight_sum = xp.sum(weights, axis=1, keepdims=True)
-        weights = xp.where(weight_sum == 0, 1.0 / self.n_functions, weights / weight_sum)
+        normalized = xp.where(weight_sum == 0, 1.0 / self.n_functions, weights / weight_sum)
 
-        return weights
+        exact_sum = xp.sum(exact, axis=1, keepdims=True)
+        exact_sum = xp.where(has_exact, exact_sum, 1)
+        one_hot = exact / exact_sum
+        return xp.where(has_exact, one_hot, normalized)
 
+    def _objective(self, params: Dict[str, Any]) -> float:
+        x = self._params_to_array(params)
+        weights = self._compute_weights(x)
+        result = 0.0
+        for i, component in enumerate(self.component_functions):
+            value = _component_value(self, x, component, i + 1, i + 1)
+            result += weights[i] * (self.lambdas[i] * value + self.biases[i])
+        return result + self.f_global
 
-def _batch_rosenbrock_scaled(Z: ArrayLike) -> ArrayLike:
-    """Vectorized Rosenbrock with CEC 2013 scaling."""
-    xp = get_array_namespace(Z)
-    Z_scaled = Z * 2.048 / 100 + 1
-    z_i = Z_scaled[:, :-1]
-    z_i1 = Z_scaled[:, 1:]
-    return xp.sum(100 * (z_i**2 - z_i1) ** 2 + (z_i - 1) ** 2, axis=1)
-
-
-def _batch_elliptic(Z: ArrayLike) -> ArrayLike:
-    """Vectorized High Conditioned Elliptic."""
-    xp = get_array_namespace(Z)
-    D = Z.shape[1]
-    if D == 1:
-        return Z[:, 0] ** 2
-    i = xp.arange(D, dtype=Z.dtype)
-    coeffs = (10**6) ** (i / (D - 1))
-    return xp.sum(coeffs * Z**2, axis=1)
-
-
-def _batch_bent_cigar(Z: ArrayLike) -> ArrayLike:
-    """Vectorized Bent Cigar."""
-    xp = get_array_namespace(Z)
-    if Z.shape[1] == 1:
-        return Z[:, 0] ** 2
-    return Z[:, 0] ** 2 + 10**6 * xp.sum(Z[:, 1:] ** 2, axis=1)
-
-
-def _batch_discus(Z: ArrayLike) -> ArrayLike:
-    """Vectorized Discus."""
-    xp = get_array_namespace(Z)
-    if Z.shape[1] == 1:
-        return 10**6 * Z[:, 0] ** 2
-    return 10**6 * Z[:, 0] ** 2 + xp.sum(Z[:, 1:] ** 2, axis=1)
-
-
-def _batch_schwefel_scaled(Z: ArrayLike) -> ArrayLike:
-    """Vectorized Schwefel with CEC 2013 scaling (full formula)."""
-    xp = get_array_namespace(Z)
-    D = Z.shape[1]
-    Z_shifted = Z * 1000 / 100 + 4.209687462275036e2
-
-    abs_z = xp.abs(Z_shifted)
-
-    term1 = Z_shifted * xp.sin(xp.sqrt(abs_z))
-    mod_pos = 500 - xp.mod(Z_shifted, 500)
-    term2 = mod_pos * xp.sin(xp.sqrt(xp.abs(mod_pos))) - (Z_shifted - 500) ** 2 / (10000 * D)
-    mod_neg = xp.mod(abs_z, 500) - 500
-    term3 = mod_neg * xp.sin(xp.sqrt(xp.abs(mod_neg))) - (Z_shifted + 500) ** 2 / (10000 * D)
-
-    result = xp.where(
-        abs_z <= 500,
-        term1,
-        xp.where(Z_shifted > 500, term2, term3),
-    )
-
-    return 418.9829 * D - xp.sum(result, axis=1)
-
-
-def _batch_schwefel_simple(Z: ArrayLike) -> ArrayLike:
-    """Vectorized Schwefel with CEC 2013 scaling."""
-    xp = get_array_namespace(Z)
-    D = Z.shape[1]
-    Z_shifted = Z * 1000 / 100 + 4.209687462275036e2
-
-    abs_z = xp.abs(Z_shifted)
-
-    term1 = Z_shifted * xp.sin(xp.sqrt(abs_z))
-
-    mod_pos = 500 - xp.mod(Z_shifted, 500)
-    term2 = mod_pos * xp.sin(xp.sqrt(xp.abs(mod_pos))) - (Z_shifted - 500) ** 2 / (10000 * D)
-
-    mod_neg = xp.mod(abs_z, 500) - 500
-    term3 = mod_neg * xp.sin(xp.sqrt(xp.abs(mod_neg))) - (Z_shifted + 500) ** 2 / (10000 * D)
-
-    result = xp.where(
-        abs_z <= 500,
-        term1,
-        xp.where(Z_shifted > 500, term2, term3),
-    )
-
-    return 418.9829 * D - xp.sum(result, axis=1)
-
-
-def _batch_rastrigin_scaled(Z: ArrayLike) -> ArrayLike:
-    """Vectorized Rastrigin with CEC 2013 scaling."""
-    xp = get_array_namespace(Z)
-    Z_scaled = Z * 5.12 / 100
-    D = Z.shape[1]
-    return 10 * D + xp.sum(Z_scaled**2 - 10 * xp.cos(2 * np.pi * Z_scaled), axis=1)
-
-
-def _batch_weierstrass_scaled(Z: ArrayLike) -> ArrayLike:
-    """Vectorized Weierstrass with CEC 2013 scaling."""
-    xp = get_array_namespace(Z)
-    a, b, k_max = 0.5, 3, 20
-    D = Z.shape[1]
-    Z_scaled = Z * 0.5 / 100
-
-    k = xp.arange(k_max + 1, dtype=Z.dtype)
-    a_k = a**k
-    b_k = b**k
-
-    Z_expanded = Z_scaled[:, :, None]
-    cos_terms = a_k * xp.cos(2 * np.pi * b_k * (Z_expanded + 0.5))
-    result = xp.sum(cos_terms, axis=(1, 2))
-
-    offset_k = a_k * xp.cos(2 * np.pi * b_k * 0.5)
-    offset = D * xp.sum(offset_k)
-
-    return result - offset
-
-
-def _batch_griewank_scaled(Z: ArrayLike) -> ArrayLike:
-    """Vectorized Griewank with CEC 2013 scaling."""
-    xp = get_array_namespace(Z)
-    D = Z.shape[1]
-    Z_scaled = Z * 600 / 100
-    sum_sq = xp.sum(Z_scaled**2, axis=1) / 4000
-    i = xp.arange(1, D + 1, dtype=Z.dtype)
-    prod_cos = xp.prod(xp.cos(Z_scaled / xp.sqrt(i)), axis=1)
-    return sum_sq - prod_cos + 1
-
-
-def _batch_ackley_simple(Z: ArrayLike) -> ArrayLike:
-    """Vectorized Ackley (no scaling)."""
-    xp = get_array_namespace(Z)
-    D = Z.shape[1]
-    sum1 = xp.sum(Z**2, axis=1)
-    sum2 = xp.sum(xp.cos(2 * np.pi * Z), axis=1)
-    return -20 * xp.exp(-0.2 * xp.sqrt(sum1 / D)) - xp.exp(sum2 / D) + 20 + np.e
+    def _batch_objective(self, X: ArrayLike) -> ArrayLike:
+        xp = get_array_namespace(X)
+        optima = xp.asarray(self._component_optima(), dtype=X.dtype)
+        weights = self._batch_compute_weights(X, optima)
+        result = xp.zeros(X.shape[0], dtype=X.dtype)
+        lambdas = xp.asarray(self.lambdas, dtype=X.dtype)
+        biases = xp.asarray(self.biases, dtype=X.dtype)
+        for i, component in enumerate(self.component_functions):
+            values = _batch_component_value(self, X, component, i + 1, i + 1)
+            result = result + weights[:, i] * (lambdas[i] * values + biases[i])
+        return result + self.f_global
 
 
 class CompositionFunction1(_CompositionBase):
-    """F21: Composition Function 1.
-
-    Combines: Rosenbrock, High Conditioned Elliptic, Bent Cigar,
-    Discus, High Conditioned Elliptic.
-    """
+    """F21: Composition Function 1."""
 
     _spec = {
         "eval_cost": 7.7,
@@ -1335,84 +1396,13 @@ class CompositionFunction1(_CompositionBase):
 
     n_functions = 5
     sigmas = [10, 20, 30, 40, 50]
-    lambdas = [1, 1e-6, 1e-26, 1e-6, 1e-6]
+    lambdas = [1, 1e-6, 1e-26, 1e-6, 0.1]
     biases = [0, 100, 200, 300, 400]
-
-    def _objective(self, params: Dict[str, Any]) -> float:
-        def rosenbrock(z: np.ndarray) -> float:
-            z = z * 2.048 / 100 + 1
-            return sum(
-                100 * (z[i] ** 2 - z[i + 1]) ** 2 + (z[i] - 1) ** 2 for i in range(len(z) - 1)
-            )
-
-        def elliptic(z: np.ndarray) -> float:
-            D = len(z)
-            return sum((10**6) ** (i / (D - 1)) * z[i] ** 2 for i in range(D))
-
-        def bent_cigar(z: np.ndarray) -> float:
-            return z[0] ** 2 + 10**6 * np.sum(z[1:] ** 2)
-
-        def discus(z: np.ndarray) -> float:
-            return 10**6 * z[0] ** 2 + np.sum(z[1:] ** 2)
-
-        functions = [rosenbrock, elliptic, bent_cigar, discus, elliptic]
-
-        x = self._params_to_array(params)
-        weights = self._compute_weights(x)
-        data = self._load_data()
-
-        result = 0.0
-        for i in range(self.n_functions):
-            shift = data.get(f"shift_{i + 1}", np.zeros(self.n_dim))
-            M = data.get(f"rotation_{i + 1}", np.eye(self.n_dim))
-            z = M @ (x - shift)
-            f_val = self.lambdas[i] * functions[i](z) + self.biases[i]
-            result += weights[i] * f_val
-
-        return result + self.f_global
-
-    def _batch_objective(self, X: ArrayLike) -> ArrayLike:
-        """Vectorized batch evaluation for F21."""
-        xp = get_array_namespace(X)
-        data = self._load_data()
-
-        # Build optima array from shift vectors
-        optima = []
-        for i in range(self.n_functions):
-            shift = data.get(f"shift_{i + 1}", np.zeros(self.n_dim))
-            optima.append(shift)
-        optima = xp.asarray(np.stack(optima), dtype=X.dtype)
-
-        weights = self._batch_compute_weights(X, optima)
-
-        # Component functions: rosenbrock, elliptic, bent_cigar, discus, elliptic
-        batch_funcs = [
-            _batch_rosenbrock_scaled,
-            _batch_elliptic,
-            _batch_bent_cigar,
-            _batch_discus,
-            _batch_elliptic,
-        ]
-
-        result = xp.zeros(X.shape[0], dtype=X.dtype)
-        lambdas = xp.asarray(self.lambdas, dtype=X.dtype)
-        biases = xp.asarray(self.biases, dtype=X.dtype)
-
-        for i in range(self.n_functions):
-            M = data.get(f"rotation_{i + 1}", np.eye(self.n_dim))
-            M = xp.asarray(M, dtype=X.dtype)
-            Z = (X - optima[i]) @ M.T
-            f_vals = lambdas[i] * batch_funcs[i](Z) + biases[i]
-            result = result + weights[:, i] * f_vals
-
-        return result + self.f_global
+    component_functions = ["rosenbrock", "different_powers", "bent_cigar", "discus", "sphere"]
 
 
 class CompositionFunction2(_CompositionBase):
-    """F22: Composition Function 2.
-
-    Combines: Schwefel, Rastrigin, High Conditioned Elliptic.
-    """
+    """F22: Composition Function 2."""
 
     _spec = {
         "eval_cost": 5.0,
@@ -1422,83 +1412,9 @@ class CompositionFunction2(_CompositionBase):
 
     n_functions = 3
     sigmas = [20, 20, 20]
-    lambdas = [10, 1, 1e-6]
+    lambdas = [1, 1, 1]
     biases = [0, 100, 200]
-
-    def _objective(self, params: Dict[str, Any]) -> float:
-        def schwefel(z: np.ndarray) -> float:
-            z = z * 1000 / 100 + 4.209687462275036e2
-            D = len(z)
-            result = 0.0
-            for i in range(D):
-                zi = z[i]
-                if abs(zi) <= 500:
-                    result += zi * np.sin(np.sqrt(abs(zi)))
-                elif zi > 500:
-                    result += (500 - zi % 500) * np.sin(np.sqrt(abs(500 - zi % 500))) - (
-                        zi - 500
-                    ) ** 2 / (10000 * D)
-                else:
-                    result += (abs(zi) % 500 - 500) * np.sin(np.sqrt(abs(abs(zi) % 500 - 500))) - (
-                        zi + 500
-                    ) ** 2 / (10000 * D)
-            return 418.9829 * D - result
-
-        def rastrigin(z: np.ndarray) -> float:
-            z = z * 5.12 / 100
-            D = len(z)
-            return 10 * D + np.sum(z**2 - 10 * np.cos(2 * np.pi * z))
-
-        def elliptic(z: np.ndarray) -> float:
-            D = len(z)
-            return sum((10**6) ** (i / (D - 1)) * z[i] ** 2 for i in range(D))
-
-        functions = [schwefel, rastrigin, elliptic]
-
-        x = self._params_to_array(params)
-        weights = self._compute_weights(x)
-        data = self._load_data()
-
-        result = 0.0
-        for i in range(self.n_functions):
-            shift = data.get(f"shift_{i + 1}", np.zeros(self.n_dim))
-            z = x - shift  # No rotation for F22
-            f_val = self.lambdas[i] * functions[i](z) + self.biases[i]
-            result += weights[i] * f_val
-
-        return result + self.f_global
-
-    def _batch_objective(self, X: ArrayLike) -> ArrayLike:
-        """Vectorized batch evaluation for F22."""
-        xp = get_array_namespace(X)
-        data = self._load_data()
-
-        # Build optima array from shift vectors
-        optima = []
-        for i in range(self.n_functions):
-            shift = data.get(f"shift_{i + 1}", np.zeros(self.n_dim))
-            optima.append(shift)
-        optima = xp.asarray(np.stack(optima), dtype=X.dtype)
-
-        weights = self._batch_compute_weights(X, optima)
-
-        # Component functions: schwefel, rastrigin, elliptic (NO rotation)
-        batch_funcs = [
-            _batch_schwefel_scaled,
-            _batch_rastrigin_scaled,
-            _batch_elliptic,
-        ]
-
-        result = xp.zeros(X.shape[0], dtype=X.dtype)
-        lambdas = xp.asarray(self.lambdas, dtype=X.dtype)
-        biases = xp.asarray(self.biases, dtype=X.dtype)
-
-        for i in range(self.n_functions):
-            Z = X - optima[i]  # No rotation for F22
-            f_vals = lambdas[i] * batch_funcs[i](Z) + biases[i]
-            result = result + weights[:, i] * f_vals
-
-        return result + self.f_global
+    component_functions = ["schwefel", "schwefel", "schwefel"]
 
 
 class CompositionFunction3(_CompositionBase):
@@ -1512,86 +1428,9 @@ class CompositionFunction3(_CompositionBase):
 
     n_functions = 3
     sigmas = [20, 20, 20]
-    lambdas = [10, 1, 1e-6]
+    lambdas = [1, 1, 1]
     biases = [0, 100, 200]
-
-    def _objective(self, params: Dict[str, Any]) -> float:
-        def schwefel(z: np.ndarray) -> float:
-            z = z * 1000 / 100 + 4.209687462275036e2
-            D = len(z)
-            result = 0.0
-            for i in range(D):
-                zi = z[i]
-                if abs(zi) <= 500:
-                    result += zi * np.sin(np.sqrt(abs(zi)))
-                elif zi > 500:
-                    result += (500 - zi % 500) * np.sin(np.sqrt(abs(500 - zi % 500))) - (
-                        zi - 500
-                    ) ** 2 / (10000 * D)
-                else:
-                    result += (abs(zi) % 500 - 500) * np.sin(np.sqrt(abs(abs(zi) % 500 - 500))) - (
-                        zi + 500
-                    ) ** 2 / (10000 * D)
-            return 418.9829 * D - result
-
-        def rastrigin(z: np.ndarray) -> float:
-            z = z * 5.12 / 100
-            D = len(z)
-            return 10 * D + np.sum(z**2 - 10 * np.cos(2 * np.pi * z))
-
-        def elliptic(z: np.ndarray) -> float:
-            D = len(z)
-            return sum((10**6) ** (i / (D - 1)) * z[i] ** 2 for i in range(D))
-
-        functions = [schwefel, rastrigin, elliptic]
-
-        x = self._params_to_array(params)
-        weights = self._compute_weights(x)
-        data = self._load_data()
-
-        result = 0.0
-        for i in range(self.n_functions):
-            shift = data.get(f"shift_{i + 1}", np.zeros(self.n_dim))
-            M = data.get(f"rotation_{i + 1}", np.eye(self.n_dim))
-            z = M @ (x - shift)
-            f_val = self.lambdas[i] * functions[i](z) + self.biases[i]
-            result += weights[i] * f_val
-
-        return result + self.f_global
-
-    def _batch_objective(self, X: ArrayLike) -> ArrayLike:
-        """Vectorized batch evaluation for F23."""
-        xp = get_array_namespace(X)
-        data = self._load_data()
-
-        # Build optima array from shift vectors
-        optima = []
-        for i in range(self.n_functions):
-            shift = data.get(f"shift_{i + 1}", np.zeros(self.n_dim))
-            optima.append(shift)
-        optima = xp.asarray(np.stack(optima), dtype=X.dtype)
-
-        weights = self._batch_compute_weights(X, optima)
-
-        # Component functions: schwefel, rastrigin, elliptic (with rotation)
-        batch_funcs = [
-            _batch_schwefel_scaled,
-            _batch_rastrigin_scaled,
-            _batch_elliptic,
-        ]
-
-        result = xp.zeros(X.shape[0], dtype=X.dtype)
-        lambdas = xp.asarray(self.lambdas, dtype=X.dtype)
-        biases = xp.asarray(self.biases, dtype=X.dtype)
-
-        for i in range(self.n_functions):
-            M = data.get(f"rotation_{i + 1}", np.eye(self.n_dim))
-            M = xp.asarray(M, dtype=X.dtype)
-            Z = (X - optima[i]) @ M.T
-            f_vals = lambdas[i] * batch_funcs[i](Z) + biases[i]
-            result = result + weights[:, i] * f_vals
-
-        return result + self.f_global
+    component_functions = ["rotated_schwefel", "rotated_schwefel", "rotated_schwefel"]
 
 
 class CompositionFunction4(_CompositionBase):
@@ -1605,93 +1444,9 @@ class CompositionFunction4(_CompositionBase):
 
     n_functions = 3
     sigmas = [20, 20, 20]
-    lambdas = [10, 1, 1e-6]
+    lambdas = [0.25, 1, 2.5]
     biases = [0, 100, 200]
-
-    def _objective(self, params: Dict[str, Any]) -> float:
-        def schwefel(z: np.ndarray) -> float:
-            z = z * 1000 / 100 + 4.209687462275036e2
-            D = len(z)
-            result = 0.0
-            for i in range(D):
-                zi = z[i]
-                if abs(zi) <= 500:
-                    result += zi * np.sin(np.sqrt(abs(zi)))
-                elif zi > 500:
-                    result += (500 - zi % 500) * np.sin(np.sqrt(abs(500 - zi % 500))) - (
-                        zi - 500
-                    ) ** 2 / (10000 * D)
-                else:
-                    result += (abs(zi) % 500 - 500) * np.sin(np.sqrt(abs(abs(zi) % 500 - 500))) - (
-                        zi + 500
-                    ) ** 2 / (10000 * D)
-            return 418.9829 * D - result
-
-        def rastrigin(z: np.ndarray) -> float:
-            z = z * 5.12 / 100
-            D = len(z)
-            return 10 * D + np.sum(z**2 - 10 * np.cos(2 * np.pi * z))
-
-        def weierstrass(z: np.ndarray) -> float:
-            a, b, k_max = 0.5, 3, 20
-            D = len(z)
-            z = z * 0.5 / 100
-            result = 0.0
-            for i in range(D):
-                for k in range(k_max + 1):
-                    result += a**k * np.cos(2 * np.pi * b**k * (z[i] + 0.5))
-            offset = D * sum(a**k * np.cos(2 * np.pi * b**k * 0.5) for k in range(k_max + 1))
-            return result - offset
-
-        functions = [schwefel, rastrigin, weierstrass]
-
-        x = self._params_to_array(params)
-        weights = self._compute_weights(x)
-        data = self._load_data()
-
-        result = 0.0
-        for i in range(self.n_functions):
-            shift = data.get(f"shift_{i + 1}", np.zeros(self.n_dim))
-            M = data.get(f"rotation_{i + 1}", np.eye(self.n_dim))
-            z = M @ (x - shift)
-            f_val = self.lambdas[i] * functions[i](z) + self.biases[i]
-            result += weights[i] * f_val
-
-        return result + self.f_global
-
-    def _batch_objective(self, X: ArrayLike) -> ArrayLike:
-        """Vectorized batch evaluation for F24."""
-        xp = get_array_namespace(X)
-        data = self._load_data()
-
-        # Build optima array from shift vectors
-        optima = []
-        for i in range(self.n_functions):
-            shift = data.get(f"shift_{i + 1}", np.zeros(self.n_dim))
-            optima.append(shift)
-        optima = xp.asarray(np.stack(optima), dtype=X.dtype)
-
-        weights = self._batch_compute_weights(X, optima)
-
-        # Component functions: schwefel, rastrigin, weierstrass (with rotation)
-        batch_funcs = [
-            _batch_schwefel_simple,
-            _batch_rastrigin_scaled,
-            _batch_weierstrass_scaled,
-        ]
-
-        result = xp.zeros(X.shape[0], dtype=X.dtype)
-        lambdas = xp.asarray(self.lambdas, dtype=X.dtype)
-        biases = xp.asarray(self.biases, dtype=X.dtype)
-
-        for i in range(self.n_functions):
-            M = data.get(f"rotation_{i + 1}", np.eye(self.n_dim))
-            M = xp.asarray(M, dtype=X.dtype)
-            Z = (X - optima[i]) @ M.T
-            f_vals = lambdas[i] * batch_funcs[i](Z) + biases[i]
-            result = result + weights[:, i] * f_vals
-
-        return result + self.f_global
+    component_functions = ["rotated_schwefel", "rotated_rastrigin", "weierstrass"]
 
 
 class CompositionFunction5(_CompositionBase):
@@ -1705,88 +1460,9 @@ class CompositionFunction5(_CompositionBase):
 
     n_functions = 3
     sigmas = [10, 30, 50]
-    lambdas = [10, 1, 1]
+    lambdas = [0.25, 1, 2.5]
     biases = [0, 100, 200]
-
-    def _objective(self, params: Dict[str, Any]) -> float:
-        def schwefel(z: np.ndarray) -> float:
-            z = z * 1000 / 100 + 4.209687462275036e2
-            D = len(z)
-            result = 0.0
-            for i in range(D):
-                zi = z[i]
-                if abs(zi) <= 500:
-                    result += zi * np.sin(np.sqrt(abs(zi)))
-                elif zi > 500:
-                    result += (500 - zi % 500) * np.sin(np.sqrt(abs(500 - zi % 500))) - (
-                        zi - 500
-                    ) ** 2 / (10000 * D)
-                else:
-                    result += (abs(zi) % 500 - 500) * np.sin(np.sqrt(abs(abs(zi) % 500 - 500))) - (
-                        zi + 500
-                    ) ** 2 / (10000 * D)
-            return 418.9829 * D - result
-
-        def rastrigin(z: np.ndarray) -> float:
-            z = z * 5.12 / 100
-            D = len(z)
-            return 10 * D + np.sum(z**2 - 10 * np.cos(2 * np.pi * z))
-
-        def ackley(z: np.ndarray) -> float:
-            D = len(z)
-            sum1 = np.sum(z**2)
-            sum2 = np.sum(np.cos(2 * np.pi * z))
-            return -20 * np.exp(-0.2 * np.sqrt(sum1 / D)) - np.exp(sum2 / D) + 20 + np.e
-
-        functions = [schwefel, rastrigin, ackley]
-
-        x = self._params_to_array(params)
-        weights = self._compute_weights(x)
-        data = self._load_data()
-
-        result = 0.0
-        for i in range(self.n_functions):
-            shift = data.get(f"shift_{i + 1}", np.zeros(self.n_dim))
-            M = data.get(f"rotation_{i + 1}", np.eye(self.n_dim))
-            z = M @ (x - shift)
-            f_val = self.lambdas[i] * functions[i](z) + self.biases[i]
-            result += weights[i] * f_val
-
-        return result + self.f_global
-
-    def _batch_objective(self, X: ArrayLike) -> ArrayLike:
-        """Vectorized batch evaluation for F25."""
-        xp = get_array_namespace(X)
-        data = self._load_data()
-
-        # Build optima array from shift vectors
-        optima = []
-        for i in range(self.n_functions):
-            shift = data.get(f"shift_{i + 1}", np.zeros(self.n_dim))
-            optima.append(shift)
-        optima = xp.asarray(np.stack(optima), dtype=X.dtype)
-
-        weights = self._batch_compute_weights(X, optima)
-
-        # Component functions: schwefel, rastrigin, ackley (with rotation)
-        batch_funcs = [
-            _batch_schwefel_simple,
-            _batch_rastrigin_scaled,
-            _batch_ackley_simple,
-        ]
-
-        result = xp.zeros(X.shape[0], dtype=X.dtype)
-        lambdas = xp.asarray(self.lambdas, dtype=X.dtype)
-        biases = xp.asarray(self.biases, dtype=X.dtype)
-
-        for i in range(self.n_functions):
-            M = data.get(f"rotation_{i + 1}", np.eye(self.n_dim))
-            M = xp.asarray(M, dtype=X.dtype)
-            Z = (X - optima[i]) @ M.T
-            f_vals = lambdas[i] * batch_funcs[i](Z) + biases[i]
-            result = result + weights[:, i] * f_vals
-
-        return result + self.f_global
+    component_functions = ["rotated_schwefel", "rotated_rastrigin", "weierstrass"]
 
 
 class CompositionFunction6(_CompositionBase):
@@ -1799,105 +1475,16 @@ class CompositionFunction6(_CompositionBase):
     }
 
     n_functions = 5
-    sigmas = [10, 20, 30, 40, 50]
-    lambdas = [10, 1, 1e-6, 1, 1]
+    sigmas = [10, 10, 10, 10, 10]
+    lambdas = [0.25, 1, 1e-7, 2.5, 10]
     biases = [0, 100, 200, 300, 400]
-
-    def _objective(self, params: Dict[str, Any]) -> float:
-        def schwefel(z: np.ndarray) -> float:
-            z = z * 1000 / 100 + 4.209687462275036e2
-            D = len(z)
-            result = 0.0
-            for i in range(D):
-                zi = z[i]
-                if abs(zi) <= 500:
-                    result += zi * np.sin(np.sqrt(abs(zi)))
-                elif zi > 500:
-                    result += (500 - zi % 500) * np.sin(np.sqrt(abs(500 - zi % 500))) - (
-                        zi - 500
-                    ) ** 2 / (10000 * D)
-                else:
-                    result += (abs(zi) % 500 - 500) * np.sin(np.sqrt(abs(abs(zi) % 500 - 500))) - (
-                        zi + 500
-                    ) ** 2 / (10000 * D)
-            return 418.9829 * D - result
-
-        def rastrigin(z: np.ndarray) -> float:
-            z = z * 5.12 / 100
-            D = len(z)
-            return 10 * D + np.sum(z**2 - 10 * np.cos(2 * np.pi * z))
-
-        def elliptic(z: np.ndarray) -> float:
-            D = len(z)
-            return sum((10**6) ** (i / (D - 1)) * z[i] ** 2 for i in range(D))
-
-        def weierstrass(z: np.ndarray) -> float:
-            a, b, k_max = 0.5, 3, 20
-            D = len(z)
-            z = z * 0.5 / 100
-            result = 0.0
-            for i in range(D):
-                for k in range(k_max + 1):
-                    result += a**k * np.cos(2 * np.pi * b**k * (z[i] + 0.5))
-            offset = D * sum(a**k * np.cos(2 * np.pi * b**k * 0.5) for k in range(k_max + 1))
-            return result - offset
-
-        def griewank(z: np.ndarray) -> float:
-            D = len(z)
-            z = z * 600 / 100
-            return np.sum(z**2) / 4000 - np.prod(np.cos(z / np.sqrt(np.arange(1, D + 1)))) + 1
-
-        functions = [schwefel, rastrigin, elliptic, weierstrass, griewank]
-
-        x = self._params_to_array(params)
-        weights = self._compute_weights(x)
-        data = self._load_data()
-
-        result = 0.0
-        for i in range(self.n_functions):
-            shift = data.get(f"shift_{i + 1}", np.zeros(self.n_dim))
-            M = data.get(f"rotation_{i + 1}", np.eye(self.n_dim))
-            z = M @ (x - shift)
-            f_val = self.lambdas[i] * functions[i](z) + self.biases[i]
-            result += weights[i] * f_val
-
-        return result + self.f_global
-
-    def _batch_objective(self, X: ArrayLike) -> ArrayLike:
-        """Vectorized batch evaluation for F26."""
-        xp = get_array_namespace(X)
-        data = self._load_data()
-
-        # Build optima array from shift vectors
-        optima = []
-        for i in range(self.n_functions):
-            shift = data.get(f"shift_{i + 1}", np.zeros(self.n_dim))
-            optima.append(shift)
-        optima = xp.asarray(np.stack(optima), dtype=X.dtype)
-
-        weights = self._batch_compute_weights(X, optima)
-
-        # Component functions: schwefel, rastrigin, elliptic, weierstrass, griewank
-        batch_funcs = [
-            _batch_schwefel_simple,
-            _batch_rastrigin_scaled,
-            _batch_elliptic,
-            _batch_weierstrass_scaled,
-            _batch_griewank_scaled,
-        ]
-
-        result = xp.zeros(X.shape[0], dtype=X.dtype)
-        lambdas = xp.asarray(self.lambdas, dtype=X.dtype)
-        biases = xp.asarray(self.biases, dtype=X.dtype)
-
-        for i in range(self.n_functions):
-            M = data.get(f"rotation_{i + 1}", np.eye(self.n_dim))
-            M = xp.asarray(M, dtype=X.dtype)
-            Z = (X - optima[i]) @ M.T
-            f_vals = lambdas[i] * batch_funcs[i](Z) + biases[i]
-            result = result + weights[:, i] * f_vals
-
-        return result + self.f_global
+    component_functions = [
+        "rotated_schwefel",
+        "rotated_rastrigin",
+        "elliptic",
+        "weierstrass",
+        "griewank",
+    ]
 
 
 class CompositionFunction7(_CompositionBase):
@@ -1910,105 +1497,16 @@ class CompositionFunction7(_CompositionBase):
     }
 
     n_functions = 5
-    sigmas = [10, 20, 30, 40, 50]
-    lambdas = [10, 10, 2.5, 25, 1e-6]
+    sigmas = [10, 10, 10, 20, 20]
+    lambdas = [100, 10, 2.5, 25, 0.1]
     biases = [0, 100, 200, 300, 400]
-
-    def _objective(self, params: Dict[str, Any]) -> float:
-        def griewank(z: np.ndarray) -> float:
-            D = len(z)
-            z = z * 600 / 100
-            return np.sum(z**2) / 4000 - np.prod(np.cos(z / np.sqrt(np.arange(1, D + 1)))) + 1
-
-        def rastrigin(z: np.ndarray) -> float:
-            z = z * 5.12 / 100
-            D = len(z)
-            return 10 * D + np.sum(z**2 - 10 * np.cos(2 * np.pi * z))
-
-        def schwefel(z: np.ndarray) -> float:
-            z = z * 1000 / 100 + 4.209687462275036e2
-            D = len(z)
-            result = 0.0
-            for i in range(D):
-                zi = z[i]
-                if abs(zi) <= 500:
-                    result += zi * np.sin(np.sqrt(abs(zi)))
-                elif zi > 500:
-                    result += (500 - zi % 500) * np.sin(np.sqrt(abs(500 - zi % 500))) - (
-                        zi - 500
-                    ) ** 2 / (10000 * D)
-                else:
-                    result += (abs(zi) % 500 - 500) * np.sin(np.sqrt(abs(abs(zi) % 500 - 500))) - (
-                        zi + 500
-                    ) ** 2 / (10000 * D)
-            return 418.9829 * D - result
-
-        def weierstrass(z: np.ndarray) -> float:
-            a, b, k_max = 0.5, 3, 20
-            D = len(z)
-            z = z * 0.5 / 100
-            result = 0.0
-            for i in range(D):
-                for k in range(k_max + 1):
-                    result += a**k * np.cos(2 * np.pi * b**k * (z[i] + 0.5))
-            offset = D * sum(a**k * np.cos(2 * np.pi * b**k * 0.5) for k in range(k_max + 1))
-            return result - offset
-
-        def elliptic(z: np.ndarray) -> float:
-            D = len(z)
-            return sum((10**6) ** (i / (D - 1)) * z[i] ** 2 for i in range(D))
-
-        functions = [griewank, rastrigin, schwefel, weierstrass, elliptic]
-
-        x = self._params_to_array(params)
-        weights = self._compute_weights(x)
-        data = self._load_data()
-
-        result = 0.0
-        for i in range(self.n_functions):
-            shift = data.get(f"shift_{i + 1}", np.zeros(self.n_dim))
-            M = data.get(f"rotation_{i + 1}", np.eye(self.n_dim))
-            z = M @ (x - shift)
-            f_val = self.lambdas[i] * functions[i](z) + self.biases[i]
-            result += weights[i] * f_val
-
-        return result + self.f_global
-
-    def _batch_objective(self, X: ArrayLike) -> ArrayLike:
-        """Vectorized batch evaluation for F27."""
-        xp = get_array_namespace(X)
-        data = self._load_data()
-
-        # Build optima array from shift vectors
-        optima = []
-        for i in range(self.n_functions):
-            shift = data.get(f"shift_{i + 1}", np.zeros(self.n_dim))
-            optima.append(shift)
-        optima = xp.asarray(np.stack(optima), dtype=X.dtype)
-
-        weights = self._batch_compute_weights(X, optima)
-
-        # Component functions: griewank, rastrigin, schwefel, weierstrass, elliptic
-        batch_funcs = [
-            _batch_griewank_scaled,
-            _batch_rastrigin_scaled,
-            _batch_schwefel_simple,
-            _batch_weierstrass_scaled,
-            _batch_elliptic,
-        ]
-
-        result = xp.zeros(X.shape[0], dtype=X.dtype)
-        lambdas = xp.asarray(self.lambdas, dtype=X.dtype)
-        biases = xp.asarray(self.biases, dtype=X.dtype)
-
-        for i in range(self.n_functions):
-            M = data.get(f"rotation_{i + 1}", np.eye(self.n_dim))
-            M = xp.asarray(M, dtype=X.dtype)
-            Z = (X - optima[i]) @ M.T
-            f_vals = lambdas[i] * batch_funcs[i](Z) + biases[i]
-            result = result + weights[:, i] * f_vals
-
-        return result + self.f_global
+    component_functions = [
+        "griewank",
+        "rotated_rastrigin",
+        "rotated_schwefel",
+        "weierstrass",
+        "sphere",
+    ]
 
 
 class CompositionFunction8(_CompositionBase):
@@ -2022,96 +1520,12 @@ class CompositionFunction8(_CompositionBase):
 
     n_functions = 5
     sigmas = [10, 20, 30, 40, 50]
-    lambdas = [10, 10, 2.5, 25, 1e-6]
+    lambdas = [2.5, 2.5e-3, 2.5, 5e-4, 0.1]
     biases = [0, 100, 200, 300, 400]
-
-    def _objective(self, params: Dict[str, Any]) -> float:
-        def ackley(z: np.ndarray) -> float:
-            D = len(z)
-            sum1 = np.sum(z**2)
-            sum2 = np.sum(np.cos(2 * np.pi * z))
-            return -20 * np.exp(-0.2 * np.sqrt(sum1 / D)) - np.exp(sum2 / D) + 20 + np.e
-
-        def griewank(z: np.ndarray) -> float:
-            D = len(z)
-            z = z * 600 / 100
-            return np.sum(z**2) / 4000 - np.prod(np.cos(z / np.sqrt(np.arange(1, D + 1)))) + 1
-
-        def schwefel(z: np.ndarray) -> float:
-            z = z * 1000 / 100 + 4.209687462275036e2
-            D = len(z)
-            result = 0.0
-            for i in range(D):
-                zi = z[i]
-                if abs(zi) <= 500:
-                    result += zi * np.sin(np.sqrt(abs(zi)))
-                elif zi > 500:
-                    result += (500 - zi % 500) * np.sin(np.sqrt(abs(500 - zi % 500))) - (
-                        zi - 500
-                    ) ** 2 / (10000 * D)
-                else:
-                    result += (abs(zi) % 500 - 500) * np.sin(np.sqrt(abs(abs(zi) % 500 - 500))) - (
-                        zi + 500
-                    ) ** 2 / (10000 * D)
-            return 418.9829 * D - result
-
-        def rastrigin(z: np.ndarray) -> float:
-            z = z * 5.12 / 100
-            D = len(z)
-            return 10 * D + np.sum(z**2 - 10 * np.cos(2 * np.pi * z))
-
-        def elliptic(z: np.ndarray) -> float:
-            D = len(z)
-            return sum((10**6) ** (i / (D - 1)) * z[i] ** 2 for i in range(D))
-
-        functions = [ackley, griewank, schwefel, rastrigin, elliptic]
-
-        x = self._params_to_array(params)
-        weights = self._compute_weights(x)
-        data = self._load_data()
-
-        result = 0.0
-        for i in range(self.n_functions):
-            shift = data.get(f"shift_{i + 1}", np.zeros(self.n_dim))
-            M = data.get(f"rotation_{i + 1}", np.eye(self.n_dim))
-            z = M @ (x - shift)
-            f_val = self.lambdas[i] * functions[i](z) + self.biases[i]
-            result += weights[i] * f_val
-
-        return result + self.f_global
-
-    def _batch_objective(self, X: ArrayLike) -> ArrayLike:
-        """Vectorized batch evaluation for F28."""
-        xp = get_array_namespace(X)
-        data = self._load_data()
-
-        # Build optima array from shift vectors
-        optima = []
-        for i in range(self.n_functions):
-            shift = data.get(f"shift_{i + 1}", np.zeros(self.n_dim))
-            optima.append(shift)
-        optima = xp.asarray(np.stack(optima), dtype=X.dtype)
-
-        weights = self._batch_compute_weights(X, optima)
-
-        # Component functions: ackley, griewank, schwefel, rastrigin, elliptic
-        batch_funcs = [
-            _batch_ackley_simple,
-            _batch_griewank_scaled,
-            _batch_schwefel_simple,
-            _batch_rastrigin_scaled,
-            _batch_elliptic,
-        ]
-
-        result = xp.zeros(X.shape[0], dtype=X.dtype)
-        lambdas = xp.asarray(self.lambdas, dtype=X.dtype)
-        biases = xp.asarray(self.biases, dtype=X.dtype)
-
-        for i in range(self.n_functions):
-            M = data.get(f"rotation_{i + 1}", np.eye(self.n_dim))
-            M = xp.asarray(M, dtype=X.dtype)
-            Z = (X - optima[i]) @ M.T
-            f_vals = lambdas[i] * batch_funcs[i](Z) + biases[i]
-            result = result + weights[:, i] * f_vals
-
-        return result + self.f_global
+    component_functions = [
+        "expanded_griewank_rosenbrock",
+        "schaffer_f7",
+        "rotated_schwefel",
+        "expanded_schaffer_f6",
+        "sphere",
+    ]

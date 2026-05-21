@@ -98,7 +98,7 @@ def _discus(z: np.ndarray) -> float:
 
 
 def _rosenbrock(z: np.ndarray) -> float:
-    z = z + 1  # Shift to standard form
+    z = z * 2.048 / 100 + 1
     result = 0.0
     for i in range(len(z) - 1):
         result += 100 * (z[i] ** 2 - z[i + 1]) ** 2 + (z[i] - 1) ** 2
@@ -113,6 +113,7 @@ def _ackley(z: np.ndarray) -> float:
 
 
 def _griewank(z: np.ndarray) -> float:
+    z = z * 600 / 100
     D = len(z)
     sum_sq = np.sum(z**2) / 4000
     prod_cos = np.prod(np.cos(z / np.sqrt(np.arange(1, D + 1))))
@@ -120,13 +121,14 @@ def _griewank(z: np.ndarray) -> float:
 
 
 def _rastrigin(z: np.ndarray) -> float:
+    z = z * 5.12 / 100
     D = len(z)
     return 10 * D + np.sum(z**2 - 10 * np.cos(2 * np.pi * z))
 
 
 def _schwefel(z: np.ndarray) -> float:
     D = len(z)
-    z = z + 4.209687462275036e2
+    z = z * 1000 / 100 + 4.209687462275036e2
     result = 0.0
     for i in range(D):
         zi = z[i]
@@ -143,7 +145,20 @@ def _schwefel(z: np.ndarray) -> float:
     return 418.9829 * D - result
 
 
+def _weierstrass(z: np.ndarray) -> float:
+    z = z * 0.5 / 100
+    a, b, k_max = 0.5, 3, 20
+    D = len(z)
+    result = 0.0
+    for i in range(D):
+        for k in range(k_max + 1):
+            result += a**k * np.cos(2 * np.pi * b**k * (z[i] + 0.5))
+    offset = sum(a**k * np.cos(2 * np.pi * b**k * 0.5) for k in range(k_max + 1))
+    return result - D * offset
+
+
 def _katsuura(z: np.ndarray) -> float:
+    z = z * 5 / 100
     D = len(z)
     result = 1.0
     for i in range(D):
@@ -155,6 +170,7 @@ def _katsuura(z: np.ndarray) -> float:
 
 
 def _happycat(z: np.ndarray) -> float:
+    z = z * 5 / 100 - 1
     D = len(z)
     alpha = 1.0 / 8.0
     sum_sq = np.sum(z**2)
@@ -163,6 +179,7 @@ def _happycat(z: np.ndarray) -> float:
 
 
 def _hgbat(z: np.ndarray) -> float:
+    z = z * 5 / 100 - 1
     D = len(z)
     sum_sq = np.sum(z**2)
     sum_z = np.sum(z)
@@ -171,7 +188,7 @@ def _hgbat(z: np.ndarray) -> float:
 
 def _expanded_griewank_rosenbrock(z: np.ndarray) -> float:
     D = len(z)
-    z = z + 1
+    z = z * 5 / 100 + 1
     result = 0.0
     for i in range(D - 1):
         t = 100 * (z[i] ** 2 - z[i + 1]) ** 2 + (z[i] - 1) ** 2
@@ -221,7 +238,7 @@ def _batch_discus(Z: ArrayLike) -> ArrayLike:
 def _batch_rosenbrock(Z: ArrayLike) -> ArrayLike:
     """Vectorized Rosenbrock: sum(100*(z_i^2 - z_{i+1})^2 + (z_i - 1)^2)."""
     xp = get_array_namespace(Z)
-    Z_shifted = Z + 1  # Shift to standard form
+    Z_shifted = Z * 2.048 / 100 + 1
     z_i = Z_shifted[:, :-1]
     z_i1 = Z_shifted[:, 1:]
     return xp.sum(100 * (z_i**2 - z_i1) ** 2 + (z_i - 1) ** 2, axis=1)
@@ -239,6 +256,7 @@ def _batch_ackley(Z: ArrayLike) -> ArrayLike:
 def _batch_griewank(Z: ArrayLike) -> ArrayLike:
     """Vectorized Griewank function."""
     xp = get_array_namespace(Z)
+    Z = Z * 600 / 100
     D = Z.shape[1]
     sum_sq = xp.sum(Z**2, axis=1) / 4000
     # prod(cos(z_i / sqrt(i+1)))
@@ -250,6 +268,7 @@ def _batch_griewank(Z: ArrayLike) -> ArrayLike:
 def _batch_rastrigin(Z: ArrayLike) -> ArrayLike:
     """Vectorized Rastrigin: 10*D + sum(z_i^2 - 10*cos(2*pi*z_i))."""
     xp = get_array_namespace(Z)
+    Z = Z * 5.12 / 100
     D = Z.shape[1]
     return 10 * D + xp.sum(Z**2 - 10 * xp.cos(2 * np.pi * Z), axis=1)
 
@@ -258,7 +277,7 @@ def _batch_schwefel(Z: ArrayLike) -> ArrayLike:
     """Vectorized Schwefel function with boundary handling."""
     xp = get_array_namespace(Z)
     D = Z.shape[1]
-    Z_shifted = Z + 4.209687462275036e2
+    Z_shifted = Z * 1000 / 100 + 4.209687462275036e2
 
     abs_z = xp.abs(Z_shifted)
 
@@ -285,6 +304,7 @@ def _batch_schwefel(Z: ArrayLike) -> ArrayLike:
 def _batch_weierstrass(Z: ArrayLike) -> ArrayLike:
     """Vectorized Weierstrass function."""
     xp = get_array_namespace(Z)
+    Z = Z * 0.5 / 100
     a, b, k_max = 0.5, 3, 20
     D = Z.shape[1]
 
@@ -311,6 +331,7 @@ def _batch_weierstrass(Z: ArrayLike) -> ArrayLike:
 def _batch_katsuura(Z: ArrayLike) -> ArrayLike:
     """Vectorized Katsuura function."""
     xp = get_array_namespace(Z)
+    Z = Z * 5 / 100
     D = Z.shape[1]
 
     # j values: 1 to 32
@@ -334,6 +355,7 @@ def _batch_katsuura(Z: ArrayLike) -> ArrayLike:
 def _batch_happycat(Z: ArrayLike) -> ArrayLike:
     """Vectorized HappyCat function."""
     xp = get_array_namespace(Z)
+    Z = Z * 5 / 100 - 1
     D = Z.shape[1]
     alpha = 1.0 / 8.0
     sum_sq = xp.sum(Z**2, axis=1)
@@ -344,6 +366,7 @@ def _batch_happycat(Z: ArrayLike) -> ArrayLike:
 def _batch_hgbat(Z: ArrayLike) -> ArrayLike:
     """Vectorized HGBat function."""
     xp = get_array_namespace(Z)
+    Z = Z * 5 / 100 - 1
     D = Z.shape[1]
     sum_sq = xp.sum(Z**2, axis=1)
     sum_z = xp.sum(Z, axis=1)
@@ -353,7 +376,7 @@ def _batch_hgbat(Z: ArrayLike) -> ArrayLike:
 def _batch_expanded_griewank_rosenbrock(Z: ArrayLike) -> ArrayLike:
     """Vectorized Expanded Griewank-Rosenbrock function."""
     xp = get_array_namespace(Z)
-    Z_shifted = Z + 1
+    Z_shifted = Z * 5 / 100 + 1
 
     # Pairs (z_i, z_{i+1}) for i = 0..D-2, plus (z_{D-1}, z_0)
     z_i = Z_shifted[:, :-1]  # (n_points, D-1)
@@ -387,10 +410,45 @@ def _batch_expanded_scaffer(Z: ArrayLike) -> ArrayLike:
     return xp.sum(schaffer_main, axis=1) + schaffer_wrap
 
 
+_SCALAR_COMPONENTS = {
+    "ackley": _ackley,
+    "bent_cigar": _bent_cigar,
+    "discus": _discus,
+    "expanded_griewank_rosenbrock": _expanded_griewank_rosenbrock,
+    "expanded_scaffer": _expanded_scaffer,
+    "griewank": _griewank,
+    "happycat": _happycat,
+    "hgbat": _hgbat,
+    "high_conditioned_elliptic": _high_conditioned_elliptic,
+    "katsuura": _katsuura,
+    "rastrigin": _rastrigin,
+    "rosenbrock": _rosenbrock,
+    "schwefel": _schwefel,
+    "weierstrass": _weierstrass,
+}
+
+_BATCH_COMPONENTS = {
+    "ackley": _batch_ackley,
+    "bent_cigar": _batch_bent_cigar,
+    "discus": _batch_discus,
+    "expanded_griewank_rosenbrock": _batch_expanded_griewank_rosenbrock,
+    "expanded_scaffer": _batch_expanded_scaffer,
+    "griewank": _batch_griewank,
+    "happycat": _batch_happycat,
+    "hgbat": _batch_hgbat,
+    "high_conditioned_elliptic": _batch_high_conditioned_elliptic,
+    "katsuura": _batch_katsuura,
+    "rastrigin": _batch_rastrigin,
+    "rosenbrock": _batch_rosenbrock,
+    "schwefel": _batch_schwefel,
+    "weierstrass": _batch_weierstrass,
+}
+
+
 class HybridFunction1(_HybridBase):
     """F17: Hybrid Function 1.
 
-    Combines: High Conditioned Elliptic, Bent Cigar, Rastrigin.
+    Combines: Modified Schwefel, Rastrigin, High Conditioned Elliptic.
 
     Properties:
     - Multimodal
@@ -400,6 +458,7 @@ class HybridFunction1(_HybridBase):
 
     n_functions = 3
     proportions = [0.3, 0.3, 0.4]
+    component_names = ("schwefel", "rastrigin", "high_conditioned_elliptic")
 
     _spec = {
         "eval_cost": 3.4,
@@ -408,7 +467,7 @@ class HybridFunction1(_HybridBase):
     }
 
     def _objective(self, params: Dict[str, Any]) -> float:
-        functions = [_high_conditioned_elliptic, _bent_cigar, _rastrigin]
+        functions = [_SCALAR_COMPONENTS[name] for name in self.component_names]
 
         x = self._params_to_array(params)
         z = self._shift_rotate(x)
@@ -422,12 +481,12 @@ class HybridFunction1(_HybridBase):
         return result + self.f_global
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
-        """Vectorized F17: High Conditioned Elliptic + Bent Cigar + Rastrigin."""
+        """Vectorized F17: Modified Schwefel + Rastrigin + HCE."""
         xp = get_array_namespace(X)
         Z = self._batch_shift_rotate(X)
         groups = self._batch_split_variables(Z)
 
-        batch_funcs = [_batch_high_conditioned_elliptic, _batch_bent_cigar, _batch_rastrigin]
+        batch_funcs = [_BATCH_COMPONENTS[name] for name in self.component_names]
         result = xp.zeros(X.shape[0], dtype=X.dtype)
         for group, func in zip(groups, batch_funcs):
             if group.shape[1] > 0:
@@ -439,7 +498,7 @@ class HybridFunction1(_HybridBase):
 class HybridFunction2(_HybridBase):
     """F18: Hybrid Function 2.
 
-    Combines: Griewank, Weierstrass, Rosenbrock.
+    Combines: Bent Cigar, HGBat, Rastrigin.
 
     Properties:
     - Multimodal
@@ -449,6 +508,7 @@ class HybridFunction2(_HybridBase):
 
     n_functions = 3
     proportions = [0.3, 0.3, 0.4]
+    component_names = ("bent_cigar", "hgbat", "rastrigin")
 
     _spec = {
         "eval_cost": 8.2,
@@ -457,17 +517,7 @@ class HybridFunction2(_HybridBase):
     }
 
     def _objective(self, params: Dict[str, Any]) -> float:
-        def weierstrass(z):
-            a, b, k_max = 0.5, 3, 20
-            D = len(z)
-            result = 0.0
-            for i in range(D):
-                for k in range(k_max + 1):
-                    result += a**k * np.cos(2 * np.pi * b**k * (z[i] + 0.5))
-            offset = sum(a**k * np.cos(2 * np.pi * b**k * 0.5) for k in range(k_max + 1))
-            return result - D * offset
-
-        functions = [_griewank, weierstrass, _rosenbrock]
+        functions = [_SCALAR_COMPONENTS[name] for name in self.component_names]
 
         x = self._params_to_array(params)
         z = self._shift_rotate(x)
@@ -481,12 +531,12 @@ class HybridFunction2(_HybridBase):
         return result + self.f_global
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
-        """Vectorized F18: Griewank + Weierstrass + Rosenbrock."""
+        """Vectorized F18: Bent Cigar + HGBat + Rastrigin."""
         xp = get_array_namespace(X)
         Z = self._batch_shift_rotate(X)
         groups = self._batch_split_variables(Z)
 
-        batch_funcs = [_batch_griewank, _batch_weierstrass, _batch_rosenbrock]
+        batch_funcs = [_BATCH_COMPONENTS[name] for name in self.component_names]
         result = xp.zeros(X.shape[0], dtype=X.dtype)
         for group, func in zip(groups, batch_funcs):
             if group.shape[1] > 0:
@@ -508,6 +558,7 @@ class HybridFunction3(_HybridBase):
 
     n_functions = 4
     proportions = [0.2, 0.2, 0.3, 0.3]
+    component_names = ("griewank", "weierstrass", "rosenbrock", "expanded_scaffer")
 
     _spec = {
         "eval_cost": 7.7,
@@ -516,17 +567,7 @@ class HybridFunction3(_HybridBase):
     }
 
     def _objective(self, params: Dict[str, Any]) -> float:
-        def weierstrass(z):
-            a, b, k_max = 0.5, 3, 20
-            D = len(z)
-            result = 0.0
-            for i in range(D):
-                for k in range(k_max + 1):
-                    result += a**k * np.cos(2 * np.pi * b**k * (z[i] + 0.5))
-            offset = sum(a**k * np.cos(2 * np.pi * b**k * 0.5) for k in range(k_max + 1))
-            return result - D * offset
-
-        functions = [_griewank, weierstrass, _rosenbrock, _expanded_scaffer]
+        functions = [_SCALAR_COMPONENTS[name] for name in self.component_names]
 
         x = self._params_to_array(params)
         z = self._shift_rotate(x)
@@ -545,12 +586,7 @@ class HybridFunction3(_HybridBase):
         Z = self._batch_shift_rotate(X)
         groups = self._batch_split_variables(Z)
 
-        batch_funcs = [
-            _batch_griewank,
-            _batch_weierstrass,
-            _batch_rosenbrock,
-            _batch_expanded_scaffer,
-        ]
+        batch_funcs = [_BATCH_COMPONENTS[name] for name in self.component_names]
         result = xp.zeros(X.shape[0], dtype=X.dtype)
         for group, func in zip(groups, batch_funcs):
             if group.shape[1] > 0:
@@ -572,6 +608,7 @@ class HybridFunction4(_HybridBase):
 
     n_functions = 4
     proportions = [0.2, 0.2, 0.3, 0.3]
+    component_names = ("hgbat", "discus", "expanded_griewank_rosenbrock", "rastrigin")
 
     _spec = {
         "eval_cost": 4.6,
@@ -580,7 +617,7 @@ class HybridFunction4(_HybridBase):
     }
 
     def _objective(self, params: Dict[str, Any]) -> float:
-        functions = [_hgbat, _discus, _expanded_griewank_rosenbrock, _rastrigin]
+        functions = [_SCALAR_COMPONENTS[name] for name in self.component_names]
 
         x = self._params_to_array(params)
         z = self._shift_rotate(x)
@@ -599,12 +636,7 @@ class HybridFunction4(_HybridBase):
         Z = self._batch_shift_rotate(X)
         groups = self._batch_split_variables(Z)
 
-        batch_funcs = [
-            _batch_hgbat,
-            _batch_discus,
-            _batch_expanded_griewank_rosenbrock,
-            _batch_rastrigin,
-        ]
+        batch_funcs = [_BATCH_COMPONENTS[name] for name in self.component_names]
         result = xp.zeros(X.shape[0], dtype=X.dtype)
         for group, func in zip(groups, batch_funcs):
             if group.shape[1] > 0:
@@ -616,7 +648,8 @@ class HybridFunction4(_HybridBase):
 class HybridFunction5(_HybridBase):
     """F21: Hybrid Function 5.
 
-    Combines: Expanded Scaffer, HGBat, Rosenbrock, High Conditioned Elliptic.
+    Combines: Expanded Scaffer, HGBat, Rosenbrock, Modified Schwefel,
+    High Conditioned Elliptic.
 
     Properties:
     - Multimodal
@@ -626,6 +659,13 @@ class HybridFunction5(_HybridBase):
 
     n_functions = 5
     proportions = [0.1, 0.2, 0.2, 0.2, 0.3]
+    component_names = (
+        "expanded_scaffer",
+        "hgbat",
+        "rosenbrock",
+        "schwefel",
+        "high_conditioned_elliptic",
+    )
 
     _spec = {
         "eval_cost": 4.8,
@@ -634,13 +674,7 @@ class HybridFunction5(_HybridBase):
     }
 
     def _objective(self, params: Dict[str, Any]) -> float:
-        functions = [
-            _expanded_scaffer,
-            _hgbat,
-            _rosenbrock,
-            _high_conditioned_elliptic,
-            _ackley,
-        ]
+        functions = [_SCALAR_COMPONENTS[name] for name in self.component_names]
 
         x = self._params_to_array(params)
         z = self._shift_rotate(x)
@@ -654,18 +688,12 @@ class HybridFunction5(_HybridBase):
         return result + self.f_global
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
-        """Vectorized F21: Expanded Scaffer + HGBat + Rosenbrock + HCE + Ackley."""
+        """Vectorized F21: Expanded Scaffer + HGBat + Rosenbrock + Schwefel + HCE."""
         xp = get_array_namespace(X)
         Z = self._batch_shift_rotate(X)
         groups = self._batch_split_variables(Z)
 
-        batch_funcs = [
-            _batch_expanded_scaffer,
-            _batch_hgbat,
-            _batch_rosenbrock,
-            _batch_high_conditioned_elliptic,
-            _batch_ackley,
-        ]
+        batch_funcs = [_BATCH_COMPONENTS[name] for name in self.component_names]
         result = xp.zeros(X.shape[0], dtype=X.dtype)
         for group, func in zip(groups, batch_funcs):
             if group.shape[1] > 0:
@@ -687,6 +715,13 @@ class HybridFunction6(_HybridBase):
 
     n_functions = 5
     proportions = [0.1, 0.2, 0.2, 0.2, 0.3]
+    component_names = (
+        "katsuura",
+        "happycat",
+        "expanded_griewank_rosenbrock",
+        "schwefel",
+        "ackley",
+    )
 
     _spec = {
         "eval_cost": 9.5,
@@ -695,13 +730,7 @@ class HybridFunction6(_HybridBase):
     }
 
     def _objective(self, params: Dict[str, Any]) -> float:
-        functions = [
-            _katsuura,
-            _happycat,
-            _expanded_griewank_rosenbrock,
-            _schwefel,
-            _ackley,
-        ]
+        functions = [_SCALAR_COMPONENTS[name] for name in self.component_names]
 
         x = self._params_to_array(params)
         z = self._shift_rotate(x)
@@ -720,13 +749,7 @@ class HybridFunction6(_HybridBase):
         Z = self._batch_shift_rotate(X)
         groups = self._batch_split_variables(Z)
 
-        batch_funcs = [
-            _batch_katsuura,
-            _batch_happycat,
-            _batch_expanded_griewank_rosenbrock,
-            _batch_schwefel,
-            _batch_ackley,
-        ]
+        batch_funcs = [_BATCH_COMPONENTS[name] for name in self.component_names]
         result = xp.zeros(X.shape[0], dtype=X.dtype)
         for group, func in zip(groups, batch_funcs):
             if group.shape[1] > 0:

@@ -95,9 +95,9 @@ class PressureVesselFunction(EngineeringFunction):
     Attributes
     ----------
     f_global : float
-        Best known objective value: approximately 6059.71.
+        Best known objective value for the mixed-discrete benchmark: approximately 6059.7143.
     x_global : ndarray
-        Best known solution: [0.8125, 0.4375, 42.0984, 176.6366].
+        Best known solution: [0.8125, 0.4375, 42.0984455958549, 176.6365958424394].
 
     Notes
     -----
@@ -150,8 +150,8 @@ class PressureVesselFunction(EngineeringFunction):
     reference = "Sandgren (1990)"
     reference_url = "https://doi.org/10.1115/1.2912596"
 
-    f_global = 6059.7068
-    x_global = np.array([0.8125, 0.4375, 42.0984, 176.6366])
+    f_global = 6059.714335048436
+    x_global = np.array([0.8125, 0.4375, 42.0984455958549, 176.6365958424394])
 
     def __init__(
         self,

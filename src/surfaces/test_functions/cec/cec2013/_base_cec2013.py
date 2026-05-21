@@ -19,7 +19,7 @@ class CEC2013Function(CECFunction):
     CEC 2013 functions are shifted and/or rotated versions of classical
     optimization test functions. Each function has:
     - A function ID (1-28)
-    - A global optimum value f* = -1400 + (func_id - 1) * 100
+    - A global optimum value from the CEC 2013 report table
     - Search bounds of [-100, 100]^D
     - Support for dimensions: 2, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100
 
@@ -59,9 +59,12 @@ class CEC2013Function(CECFunction):
     def f_global(self) -> float:
         """Global optimum value for this function.
 
-        CEC 2013 formula: f* = -1400 + (func_id - 1) * 100
+        CEC 2013 skips 0 after F14: F1-F14 use -1400..-100,
+        F15-F28 use 100..1400.
         """
-        return float(-1400 + (self.func_id - 1) * 100)
+        if self.func_id <= 14:
+            return float(-1400 + (self.func_id - 1) * 100)
+        return float(-1400 + self.func_id * 100)
 
     @property
     def x_global(self) -> Optional[np.ndarray]:

@@ -103,9 +103,9 @@ class WeldedBeamFunction(EngineeringFunction):
     Attributes
     ----------
     f_global : float
-        Best known objective value: approximately 1.7248.
+        Best known objective value: approximately 1.7248523.
     x_global : ndarray
-        Best known solution: [0.2057, 3.4705, 9.0366, 0.2057].
+        Best known solution: [0.2057296398, 3.4704886656, 9.0366239104, 0.2057296398].
 
     References
     ----------
@@ -137,8 +137,10 @@ class WeldedBeamFunction(EngineeringFunction):
     variable_names = ["h", "l", "t", "b"]
     variable_bounds = [(0.125, 5.0), (0.1, 10.0), (0.1, 10.0), (0.125, 5.0)]
 
-    f_global = 1.724852
-    x_global = np.array([0.205730, 3.470489, 9.036624, 0.205730])
+    f_global = 1.7248523085973646
+    x_global = np.array(
+        [0.20572963978607944, 3.4704886656280016, 9.0366239103576333, 0.20572963978607944]
+    )
 
     def __init__(
         self,

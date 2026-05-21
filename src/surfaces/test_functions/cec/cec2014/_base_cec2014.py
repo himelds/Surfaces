@@ -55,3 +55,7 @@ class CEC2014Function(CECFunction):
     def _shift_rotate(self, x):
         """Apply shift then rotation: z = M @ (x - o)."""
         return self._rotate(self._shift(x))
+
+    def _array_input_param_names(self) -> list[str]:
+        """Use numeric CEC coordinate order for array-like scalar input."""
+        return [f"x{i}" for i in range(self.n_dim)]

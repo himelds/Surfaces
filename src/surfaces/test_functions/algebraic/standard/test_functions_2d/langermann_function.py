@@ -47,7 +47,7 @@ class LangermannFunction(AlgebraicFunction):
         "unimodal": False,
         "separable": False,
         "scalable": False,
-        "default_bounds": (-15.0, 15.0),
+        "default_bounds": (0.0, 10.0),
     }
 
     f_global = None  # Complex to determine analytically
@@ -84,31 +84,21 @@ class LangermannFunction(AlgebraicFunction):
         self.n_dim = 2
 
     def _objective(self, params: Dict[str, Any]) -> float:
-        loss_sum1 = 0
+        x = (params["x0"], params["x1"])
+        outer = 0.0
 
         for m in range(self.m):
-            loss_sum1 += self.c[m]
-
-            loss_sum2 = 0
-            loss_sum3 = 0
+            inner = 0.0
             for dim in range(self.n_dim):
-                dim_str = "x" + str(dim)
-                x = params[dim_str]
+                diff = x[dim] - self.A[dim][m]
+                inner += diff**2
 
-                loss_sum2 += x - self.A[dim][m]
-                loss_sum3 += x - self.A[dim][m]
+            outer += self.c[m] * math.exp(-inner / math.pi) * math.cos(math.pi * inner)
 
-            loss_sum2 *= -1 / math.pi
-            loss_sum3 *= math.pi
-
-        return loss_sum1 * math.exp(loss_sum2) * math.cos(loss_sum3)
+        return outer
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
         """Vectorized batch evaluation.
-
-        NOTE: This matches the (buggy) sequential implementation exactly.
-        The sequential implementation only uses the LAST m value (m=4) for
-        loss_sum2 and loss_sum3, while loss_sum1 accumulates all c values.
 
         Parameters
         ----------
@@ -122,33 +112,16 @@ class LangermannFunction(AlgebraicFunction):
         """
         xp = get_array_namespace(X)
 
-        # Match the buggy sequential implementation:
-        # - loss_sum1 = sum of all c values (accumulated over m loop)
-        # - loss_sum2/loss_sum3 are reset each m iteration, so only last m (=4) matters
-        # - Last iteration: sum over dim of (x[dim] - A[dim][4])
-
         c = xp.asarray(self.c)
+        centers = xp.asarray(self.A).T
+        inner = xp.sum((X[:, None, :] - centers[None, :, :]) ** 2, axis=2)
 
-        loss_sum1 = xp.sum(c)  # = 13
-
-        # Only the last m value (index 4) is used due to the bug
-        # A[0][4] = 7, A[1][4] = 9
-        last_m = self.m - 1  # = 4
-
-        # Sum (x[dim] - A[dim][last_m]) over dim
-        x0 = X[:, 0]
-        x1 = X[:, 1]
-        diff_sum = (x0 - self.A[0][last_m]) + (x1 - self.A[1][last_m])
-
-        loss_sum2 = diff_sum * (-1 / math.pi)
-        loss_sum3 = diff_sum * math.pi
-
-        return loss_sum1 * xp.exp(loss_sum2) * xp.cos(loss_sum3)
+        return xp.sum(c * xp.exp(-inner / math.pi) * xp.cos(math.pi * inner), axis=1)
 
     def _search_space(
         self,
-        min: float = -15,
-        max: float = 15,
+        min: float = 0,
+        max: float = 10,
         value_types: str = "array",
         size: int = 10000,
     ) -> Dict[str, Any]:

@@ -13,11 +13,11 @@ from surfaces._array_utils import ArrayLike, get_array_namespace
 from .._base_multi_objective import BaseMultiObjectiveTestFunction
 
 _PARETO_SEGMENTS = [
-    (0.0, 0.0830),
-    (0.1822, 0.2577),
-    (0.4093, 0.4538),
-    (0.6183, 0.6525),
-    (0.8233, 0.8518),
+    (0.0, 0.0830015349),
+    (0.1822287280, 0.2577623634),
+    (0.4093136748, 0.4538821041),
+    (0.6183967944, 0.6525117038),
+    (0.8233317983, 0.8518328654),
 ]
 
 
@@ -27,19 +27,31 @@ def _distribute_points(n_points: int) -> list:
     Uses largest-remainder method to guarantee the counts sum to n_points
     exactly, avoiding off-by-one issues from independent rounding.
     """
-    widths = [hi - lo for lo, hi in _PARETO_SEGMENTS]
-    total_width = sum(widths)
+    if n_points < 0:
+        raise ValueError(f"n_points must be >= 0, got {n_points}")
 
-    fractions = [n_points * w / total_width for w in widths]
-    floors = [max(1, int(f)) for f in fractions]
-    remainders = [f - fl for f, fl in zip(fractions, floors)]
+    n_segments = len(_PARETO_SEGMENTS)
+    counts = np.zeros(n_segments, dtype=int)
+    if n_points == 0:
+        return counts.tolist()
 
-    deficit = n_points - sum(floors)
+    remaining = n_points
+    if n_points >= n_segments:
+        counts += 1
+        remaining -= n_segments
+
+    widths = np.array([hi - lo for lo, hi in _PARETO_SEGMENTS])
+    fractions = remaining * widths / np.sum(widths)
+    additions = np.floor(fractions).astype(int)
+    counts += additions
+
+    deficit = remaining - int(np.sum(additions))
     if deficit > 0:
+        remainders = fractions - additions
         for idx in np.argsort(remainders)[::-1][:deficit]:
-            floors[idx] += 1
+            counts[idx] += 1
 
-    return floors
+    return counts.tolist()
 
 
 class ZDT3(BaseMultiObjectiveTestFunction):
@@ -123,10 +135,14 @@ class ZDT3(BaseMultiObjectiveTestFunction):
 
         segments = []
         for (lo, hi), n_seg in zip(_PARETO_SEGMENTS, counts):
+            if n_seg == 0:
+                continue
             f1_seg = np.linspace(lo, hi, n_seg)
             f2_seg = 1 - np.sqrt(f1_seg) - f1_seg * np.sin(10 * np.pi * f1_seg)
             segments.append(np.column_stack([f1_seg, f2_seg]))
 
+        if not segments:
+            return np.empty((0, self.n_objectives))
         return np.vstack(segments)
 
     def _pareto_set(self, n_points: int) -> np.ndarray:
@@ -135,8 +151,12 @@ class ZDT3(BaseMultiObjectiveTestFunction):
 
         x1_values = []
         for (lo, hi), n_seg in zip(_PARETO_SEGMENTS, counts):
+            if n_seg == 0:
+                continue
             x1_values.append(np.linspace(lo, hi, n_seg))
 
+        if not x1_values:
+            return np.empty((0, self.n_dim))
         x1 = np.concatenate(x1_values)
 
         x = np.zeros((len(x1), self.n_dim))

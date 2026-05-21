@@ -89,9 +89,9 @@ class TensionCompressionSpringFunction(EngineeringFunction):
     Attributes
     ----------
     f_global : float
-        Best known objective value: approximately 0.012665.
+        Best known objective value: approximately 0.0126652328.
     x_global : ndarray
-        Best known solution: [0.05169, 0.35673, 11.2885].
+        Best known solution: [0.051689156131, 0.356720026419, 11.288831695483].
 
     Notes
     -----
@@ -133,8 +133,8 @@ class TensionCompressionSpringFunction(EngineeringFunction):
     variable_names = ["d", "D", "N"]
     variable_bounds = [(0.05, 2.0), (0.25, 1.3), (2.0, 15.0)]
 
-    f_global = 0.012665
-    x_global = np.array([0.05169, 0.35673, 11.2885])
+    f_global = 0.012665232788384365
+    x_global = np.array([0.051689156131, 0.356720026419, 11.288831695483])
 
     def __init__(
         self,

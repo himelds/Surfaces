@@ -73,13 +73,18 @@ class ZDT4(BaseMultiObjectiveTestFunction):
         "convex_front": True,
         "multimodal": True,
         "scalable": True,
-        "default_bounds": (0.0, 1.0),
+        "default_bounds": (-5.0, 5.0),
     }
 
     def __init__(self, n_dim: int = 10, **kwargs):
         if n_dim < 2:
             raise ValueError(f"n_dim must be >= 2, got {n_dim}")
         super().__init__(n_dim, **kwargs)
+
+    @property
+    def variable_bounds(self):
+        """Exact ZDT4 bounds: x0 in [0, 1], all remaining variables in [-5, 5]."""
+        return [(0.0, 1.0)] + [(-5.0, 5.0)] * (self.n_dim - 1)
 
     def _default_search_space(self) -> Dict[str, Any]:
         """Non-uniform bounds: x0 in [0,1], x1..xn in [-5,5]."""
