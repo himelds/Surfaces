@@ -8,20 +8,31 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Type
 
+from surfaces.test_functions._function_spec import FunctionSpec, MetaSpec
+
 
 def get_merged_spec(func_cls: Type) -> Dict[str, Any]:
-    """Get merged spec from class hierarchy."""
-    result = {}
-    for klass in reversed(func_cls.__mro__):
-        if hasattr(klass, "_spec"):
-            result.update(klass._spec)
-    return result
+    """Get resolved function spec for a class."""
+    spec = getattr(func_cls, "_spec", FunctionSpec())
+    if isinstance(spec, FunctionSpec):
+        return spec.as_dict()
+    return dict(spec)
+
+
+def get_merged_meta(func_cls: Type) -> Dict[str, Any]:
+    """Get resolved metadata for a class."""
+    meta = getattr(func_cls, "_meta", MetaSpec())
+    if isinstance(meta, MetaSpec):
+        return meta.as_dict()
+    return dict(meta)
 
 
 def get_spec_value(func_cls: Type, key: str) -> Any:
-    """Get a specific spec value from a function class."""
+    """Get a specific filter value from function spec or metadata."""
     spec = get_merged_spec(func_cls)
-    return spec.get(key)
+    if key in spec:
+        return spec[key]
+    return get_merged_meta(func_cls).get(key)
 
 
 def get_n_dim(func_cls: Type) -> Optional[int]:
