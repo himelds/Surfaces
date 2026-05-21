@@ -76,6 +76,11 @@ class _CollectionSingleton(Collection):
 
         add_functions(constrained_functions)
 
+        # Discrete functions (always available)
+        from ..test_functions.algebraic.discrete import discrete_functions
+
+        add_functions(discrete_functions)
+
         # Multi-objective functions (always available)
         from ..test_functions.algebraic.multi_objective import multi_objective_functions
 
