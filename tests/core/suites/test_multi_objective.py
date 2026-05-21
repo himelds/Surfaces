@@ -13,6 +13,8 @@ from surfaces.test_functions.algebraic.multi_objective import (
     DTLZ2,
     DTLZ7,
     WFG1,
+    WFG2,
+    WFG3,
     ZDT1,
     ZDT2,
     ZDT4,
@@ -29,10 +31,22 @@ from surfaces.test_functions.algebraic.multi_objective.zdt import zdt_functions
 def _make_func(func_class):
     """Instantiate a MO function with n_objectives=2 to keep shapes uniform."""
     if issubclass(func_class, BaseWFGFunction):
-        return func_class(n_objectives=2, n_dim=3)
+        n_dim = 4 if func_class in (WFG2, WFG3) else 3
+        return func_class(n_objectives=2, n_dim=n_dim)
     if func_class in dtlz_functions:
         return func_class(n_objectives=2, n_dim=3)
     return func_class(n_dim=3)
+
+
+def _random_points_in_domain(func, rng, n_points):
+    if hasattr(func, "variable_bounds"):
+        bounds = np.asarray(func.variable_bounds, dtype=float)
+        lo = bounds[:, 0]
+        hi = bounds[:, 1]
+        return rng.uniform(lo, hi, size=(n_points, func.n_dim))
+
+    lo, hi = func.spec.get("default_bounds", (0, 1))
+    return rng.uniform(lo, hi, size=(n_points, func.n_dim))
 
 
 class TestMultiObjectiveEvaluation:
@@ -133,8 +147,7 @@ class TestMultiObjectiveBatch:
         rng = np.random.default_rng(42)
         func = _make_func(func_class)
 
-        lo, hi = func.spec.get("default_bounds", (0, 1))
-        X = rng.uniform(lo, hi, size=(5, func.n_dim))
+        X = _random_points_in_domain(func, rng, 5)
 
         batch_results = func.batch(X)
         sequential = np.array([func(X[i]) for i in range(5)])

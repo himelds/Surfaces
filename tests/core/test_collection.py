@@ -107,6 +107,16 @@ class TestCollectionSingleton:
         names = collection.names
         assert "WeldedBeamFunction" in names
 
+    def test_collection_contains_discrete(self):
+        from surfaces import collection
+
+        names = collection.names
+        assert "OneMaxFunction" in names
+        assert "LeadingOnesFunction" in names
+        assert "TrapFunction" in names
+        assert "NKLandscapeFunction" in names
+        assert "KnapsackFunction" in names
+
 
 class TestCollectionFilter:
     """Test collection.filter() method."""
@@ -141,7 +151,7 @@ class TestCollectionFilter:
         from surfaces import collection
 
         result = collection.filter(category="algebraic")
-        assert len(result) == 53  # 30 standard + 23 multi-objective
+        assert len(result) == 58  # 30 standard + 23 multi-objective + 5 discrete
         assert all("algebraic" in f.__module__ for f in result)
 
     def test_filter_by_category_bbob(self):

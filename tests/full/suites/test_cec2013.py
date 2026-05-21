@@ -170,9 +170,12 @@ class TestCEC2013Properties:
 
     @pytest.mark.parametrize("func_class", ALL_FUNCTIONS)
     def test_f_global_matches_convention(self, func_class):
-        """f_global follows the -1400 + (func_id - 1) * 100 convention."""
+        """f_global follows the CEC 2013 report table."""
         func = func_class(n_dim=10)
-        expected = -1400 + (func.func_id - 1) * 100
+        if func.func_id <= 14:
+            expected = -1400 + (func.func_id - 1) * 100
+        else:
+            expected = -1400 + func.func_id * 100
         assert func.f_global == expected
 
     @pytest.mark.parametrize("func_class", ALL_FUNCTIONS)

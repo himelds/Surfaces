@@ -15,7 +15,12 @@ import numpy as np
 import pytest
 
 from surfaces.test_functions.machine_learning import machine_learning_functions
-from tests.conftest import func_id, get_sample_params, instantiate_function
+from tests.conftest import (
+    func_id,
+    get_sample_params,
+    instantiate_function,
+    skip_if_missing_dependencies,
+)
 
 
 @pytest.mark.ml
@@ -281,6 +286,8 @@ class TestAdditionalClassifiers:
     def test_catboost_classifier(self, quick_ml_params):
         """CatBoostClassifier evaluates correctly."""
         from surfaces.test_functions.machine_learning import CatBoostClassifierFunction
+
+        skip_if_missing_dependencies(CatBoostClassifierFunction)
 
         func = CatBoostClassifierFunction()
         params = {**get_sample_params(func), **quick_ml_params}

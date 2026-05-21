@@ -125,7 +125,7 @@ class TestBBOBFunctionProperties:
     def test_has_name(self, func_class):
         """Each BBOB function has a name."""
         func = func_class(n_dim=2)
-        name = func.spec.get("name")
+        name = func.meta.name
         assert name is not None and len(name) > 0
 
     @pytest.mark.parametrize("func_class", ALL_BBOB, ids=func_id)

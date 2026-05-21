@@ -3,6 +3,7 @@
 import pytest
 
 from surfaces.test_functions._accessors._spec import SpecAccessor
+from surfaces.test_functions._function_spec import FunctionSpec
 from surfaces.test_functions.algebraic import SphereFunction
 
 
@@ -13,6 +14,10 @@ class TestSpecType:
         """func.spec returns a SpecAccessor, not a plain dict."""
         func = SphereFunction(n_dim=2)
         assert isinstance(func.spec, SpecAccessor)
+
+    def test_class_spec_is_function_spec(self):
+        """Classes store the resolved static spec as FunctionSpec."""
+        assert isinstance(SphereFunction._spec, FunctionSpec)
 
     def test_as_dict_returns_plain_dict(self):
         """func.spec.as_dict() returns a plain dict."""
@@ -117,8 +122,8 @@ class TestSpecGlobalOptimum:
         assert func.spec.x_global == (0.0, 0.0, 0.0)
 
 
-class TestSpecMROmerging:
-    """Test that _spec dicts merge correctly through the MRO.
+class TestSpecResolution:
+    """Test that _spec declarations resolve correctly through the MRO.
 
     SphereFunction overrides convex, unimodal, separable, scalable.
     AlgebraicFunction defines default_bounds, continuous, differentiable.

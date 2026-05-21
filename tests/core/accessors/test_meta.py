@@ -3,6 +3,7 @@
 import pytest
 
 from surfaces.test_functions._accessors._meta import MetaAccessor
+from surfaces.test_functions._function_spec import MetaSpec
 from surfaces.test_functions.algebraic import SphereFunction
 
 
@@ -14,11 +15,25 @@ class TestMetaProperties:
         func = SphereFunction(n_dim=2)
         assert func.meta.name == "Sphere Function"
 
+    def test_class_meta_is_meta_spec(self):
+        """Classes store resolved metadata as MetaSpec."""
+        assert isinstance(SphereFunction._meta, MetaSpec)
+
+    def test_slug(self):
+        """func.meta.slug returns the stable internal identifier."""
+        func = SphereFunction(n_dim=2)
+        assert func.meta.slug == "sphere_function"
+
     def test_latex_formula(self):
         """func.meta.latex_formula returns the LaTeX string."""
         func = SphereFunction(n_dim=2)
         assert func.meta.latex_formula is not None
         assert r"\sum" in func.meta.latex_formula
+
+    def test_pgfmath_formula(self):
+        """func.meta.pgfmath_formula returns the PGF math string."""
+        func = SphereFunction(n_dim=2)
+        assert func.meta.pgfmath_formula == "#1^2 + #2^2"
 
     def test_reference(self):
         """func.meta.reference returns the reference or None."""
@@ -37,6 +52,12 @@ class TestMetaProperties:
         func = SphereFunction(n_dim=2)
         assert func.meta.tagline is not None
         assert isinstance(func.meta.tagline, str)
+
+    def test_display_metadata(self):
+        """func.meta exposes visualization hints."""
+        func = SphereFunction(n_dim=2)
+        assert func.meta.display_bounds == (-5.0, 5.0)
+        assert func.meta.display_projection == {"fixed_value": 0.0}
 
     def test_func_id(self):
         """func.meta.func_id returns None for SphereFunction."""

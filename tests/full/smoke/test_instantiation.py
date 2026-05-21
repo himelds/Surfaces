@@ -14,6 +14,7 @@ import surfaces.test_functions.cec.cec2013 as cec2013
 import surfaces.test_functions.cec.cec2014 as cec2014
 import surfaces.test_functions.cec.cec2017 as cec2017
 from surfaces.test_functions.machine_learning import machine_learning_functions
+from tests.conftest import skip_if_missing_dependencies
 
 # Build CEC function lists dynamically
 CEC2013_FUNCTIONS = [
@@ -45,6 +46,8 @@ def instantiate_function(func_class, **kwargs):
 
     Uses the class's _spec['scalable'] attribute to determine if n_dim is required.
     """
+    skip_if_missing_dependencies(func_class)
+
     spec = getattr(func_class, "_spec", {})
     is_scalable = spec.get("scalable", False)
 
