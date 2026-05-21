@@ -2,6 +2,8 @@
 
 from typing import Any, Dict, List, Optional
 
+import numpy as np
+
 from surfaces.modifiers import BaseModifier
 
 from .._base_forecasting import BaseForecasting
@@ -99,24 +101,28 @@ class ExpSmoothingForecasterFunction(BaseForecasting):
         y_train = y[:train_size]
         y_test = y[train_size:]
 
-        try:
-            forecaster = ExponentialSmoothing(
-                trend=params["trend"],
-                seasonal=params["seasonal"],
-                sp=params["sp"] if params["seasonal"] is not None else None,
-                random_state=42,
-            )
+        forecaster = ExponentialSmoothing(
+            trend=params["trend"],
+            seasonal=params["seasonal"],
+            sp=params["sp"] if params["seasonal"] is not None else None,
+            random_state=42,
+        )
 
+        try:
             forecaster.fit(y_train)
             fh = list(range(1, self.forecast_horizon + 1))
             y_pred = forecaster.predict(fh=fh)
-
-            mape = mean_absolute_percentage_error(y_test, y_pred, symmetric=False)
-            score = max(0.0, 1.0 - mape)
-            return score
-
-        except Exception:
+        except ValueError:
+            # Some Holt-Winters hyperparameter combinations are invalid for a
+            # given series, for example multiplicative components on
+            # non-positive data. Treat those configurations as poor candidates.
             return 0.0
+
+        mape = mean_absolute_percentage_error(y_test, y_pred, symmetric=False)
+        if not np.isfinite(mape):
+            return 0.0
+        score = max(0.0, 1.0 - mape)
+        return score
 
     def _get_surrogate_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Add fixed parameters for surrogate prediction."""
