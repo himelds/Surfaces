@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Optional
 
+from .._function_spec import FunctionSpec
+
 if TYPE_CHECKING:
     import numpy as np
 
@@ -25,13 +27,16 @@ class SpecAccessor:
     def __init__(self, func: "BaseTestFunction") -> None:
         self._func = func
 
+    @property
+    def _spec(self) -> FunctionSpec:
+        spec = getattr(type(self._func), "_spec", FunctionSpec())
+        if isinstance(spec, FunctionSpec):
+            return spec
+        return FunctionSpec(**spec)
+
     def as_dict(self) -> dict:
-        """Return the full merged spec as a plain dict."""
-        result = {}
-        for klass in reversed(type(self._func).__mro__):
-            if hasattr(klass, "_spec"):
-                result.update(klass._spec)
-        return result
+        """Return the resolved static function spec as a plain dict."""
+        return self._spec.as_dict()
 
     def get(self, key: str, default: Any = None) -> Any:
         """Dict-compatible get."""
@@ -54,45 +59,101 @@ class SpecAccessor:
     # Typed properties from _spec
 
     @property
-    def convex(self) -> bool:
-        return self.as_dict().get("convex", False)
-
-    @property
-    def unimodal(self) -> bool:
-        return self.as_dict().get("unimodal", False)
-
-    @property
-    def separable(self) -> bool:
-        return self.as_dict().get("separable", False)
-
-    @property
-    def continuous(self) -> bool:
-        return self.as_dict().get("continuous", True)
-
-    @property
-    def differentiable(self) -> bool:
-        return self.as_dict().get("differentiable", True)
-
-    @property
-    def scalable(self) -> bool:
-        return self.as_dict().get("scalable", False)
+    def n_dim(self) -> Optional[int]:
+        return getattr(self._func, "n_dim", self._spec.n_dim)
 
     @property
     def n_objectives(self) -> int:
         # Prefer instance/class attribute (set by __init__ or class-level)
-        # over _spec dict, so configurable n_objectives (DTLZ, WFG) works
-        return getattr(self._func, "n_objectives", self.as_dict().get("n_objectives", 1))
+        # over static spec, so configurable n_objectives (DTLZ, WFG) works.
+        return getattr(self._func, "n_objectives", self._spec.n_objectives)
 
     @property
-    def default_bounds(self) -> tuple:
-        return self.as_dict().get("default_bounds", (-5.0, 5.0))
+    def default_bounds(self) -> Optional[tuple]:
+        return self._spec.default_bounds
+
+    @property
+    def func_id(self) -> Optional[int]:
+        return self._spec.func_id
+
+    @property
+    def convex(self) -> Optional[bool]:
+        return self._spec.convex
+
+    @property
+    def unimodal(self) -> Optional[bool]:
+        return self._spec.unimodal
+
+    @property
+    def separable(self) -> Optional[bool]:
+        return self._spec.separable
+
+    @property
+    def continuous(self) -> Optional[bool]:
+        return self._spec.continuous
+
+    @property
+    def differentiable(self) -> Optional[bool]:
+        return self._spec.differentiable
+
+    @property
+    def scalable(self) -> bool:
+        return self._spec.scalable
+
+    @property
+    def discrete(self) -> bool:
+        return self._spec.discrete
+
+    @property
+    def constrained(self) -> bool:
+        return self._spec.constrained
+
+    @property
+    def stochastic(self) -> bool:
+        return self._spec.stochastic
+
+    @property
+    def simulation_based(self) -> bool:
+        return self._spec.simulation_based
+
+    @property
+    def expensive(self) -> bool:
+        return self._spec.expensive
+
+    @property
+    def ode_based(self) -> bool:
+        return self._spec.ode_based
+
+    @property
+    def deceptive(self) -> bool:
+        return self._spec.deceptive
+
+    @property
+    def multimodal(self) -> bool:
+        return self._spec.multimodal
+
+    @property
+    def convex_front(self) -> Optional[bool]:
+        return self._spec.convex_front
+
+    @property
+    def concave_front(self) -> Optional[bool]:
+        return self._spec.concave_front
+
+    @property
+    def disconnected_front(self) -> Optional[bool]:
+        return self._spec.disconnected_front
 
     # Global optimum (from class-level attrs on concrete functions)
 
     @property
     def eval_cost(self) -> Optional[float]:
         """Evaluation cost in Compute Units (CU)."""
-        return self.as_dict().get("eval_cost", None)
+        return self._spec.eval_cost
+
+    @property
+    def deprecated(self) -> bool:
+        return self._spec.deprecated
 
     @property
     def f_global(self) -> Optional[float]:

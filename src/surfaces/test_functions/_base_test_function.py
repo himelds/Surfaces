@@ -12,6 +12,8 @@ import numpy as np
 from surfaces._array_utils import ArrayLike, is_array_like
 from surfaces.modifiers import BaseModifier
 
+from ._function_spec import FunctionSpec, MetaSpec, resolve_function_spec, resolve_meta_spec
+
 
 def _check_dependencies_after_init(init_func):
     """Call ``_check_dependencies()`` after ``__init__`` completes."""
@@ -71,11 +73,17 @@ class BaseTestFunction:
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
+        raw_spec = cls.__dict__.get("_spec")
+        raw_meta = cls.__dict__.get("_meta")
+
         # Auto-derive name if not explicitly defined
         if "name" not in cls.__dict__:
-            spec = cls.__dict__.get("_spec", {})
-            if isinstance(spec, dict) and "name" in spec:
-                cls.name = spec["name"]
+            spec_name = raw_spec.get("name") if hasattr(raw_spec, "get") else None
+            meta_name = raw_meta.get("name") if hasattr(raw_meta, "get") else None
+            if meta_name is not None:
+                cls.name = meta_name
+            elif spec_name is not None:
+                cls.name = spec_name
             else:
                 raw = cls.__name__.removesuffix("Function")
                 cls.name = (
@@ -88,21 +96,24 @@ class BaseTestFunction:
                 )
         # Auto-derive _name_ if not explicitly defined
         if "_name_" not in cls.__dict__:
-            cls._name_ = cls.name.lower().replace(" ", "_")
+            meta_slug = raw_meta.get("slug") if hasattr(raw_meta, "get") else None
+            legacy_meta_slug = raw_meta.get("_name_") if hasattr(raw_meta, "get") else None
+            if meta_slug is not None:
+                cls._name_ = meta_slug
+            elif legacy_meta_slug is not None:
+                cls._name_ = legacy_meta_slug
+            else:
+                cls._name_ = cls.name.lower().replace(" ", "_")
 
-    _spec: Dict[str, Any] = {
-        "n_dim": None,
-        "n_objectives": 1,
-        "default_bounds": (-5.0, 5.0),
-        "func_id": None,
-        "continuous": True,
-        "differentiable": True,
-        "convex": False,
-        "separable": False,
-        "unimodal": False,
-        "scalable": False,
-        "eval_cost": None,
-    }
+        cls._spec = resolve_function_spec(cls, raw_spec)
+        cls._meta = resolve_meta_spec(cls, raw_spec, raw_meta)
+        if cls._meta.name is not None:
+            cls.name = cls._meta.name
+        if cls._meta.slug is not None:
+            cls._name_ = cls._meta.slug
+
+    _spec: FunctionSpec = FunctionSpec()
+    _meta: MetaSpec = MetaSpec(name="Base Test Function", slug="base_test_function")
 
     f_global: Optional[float] = None
     x_global: Optional[np.ndarray] = None
@@ -354,7 +365,7 @@ class BaseTestFunction:
     ) -> Dict[str, Any]:
         """Convert any input format to dict."""
         if isinstance(params, (np.ndarray, list, tuple)):
-            param_names = sorted(self.search_space.keys())
+            param_names = self._array_input_param_names()
             if len(params) != len(param_names):
                 raise ValueError(f"Expected {len(param_names)} values, got {len(params)}")
             return {name: params[i] for i, name in enumerate(param_names)}
@@ -362,6 +373,15 @@ class BaseTestFunction:
         if params is None:
             params = {}
         return {**params, **kwargs}
+
+    def _array_input_param_names(self) -> List[str]:
+        """Parameter order used for 1D array/list/tuple input.
+
+        The default preserves the historical contract: array-like scalar
+        evaluations are mapped by alphabetically sorted search-space keys.
+        Subclasses with a domain-specific positional order can override this.
+        """
+        return sorted(self.search_space.keys())
 
     def _params_to_cache_key(
         self, params: Dict[str, Any], fidelity: Optional[float] = None

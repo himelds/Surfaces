@@ -125,9 +125,6 @@ class CustomTestFunction(BaseSingleObjectiveTestFunction):
             self.x_global = global_optimum.get("position")
             self.f_global = global_optimum.get("score")
 
-        n_dim = len(self._search_space_data) if self._search_space_data is not None else None
-        self._spec = {**self._spec, "n_dim": n_dim}
-
         self.experiment = experiment
         self.tags = tags or []
         self.metadata = metadata or {}
