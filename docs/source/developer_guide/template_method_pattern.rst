@@ -306,7 +306,7 @@ Algebraic function example
             return xp.sum(X**2, axis=1)
 
 No need to implement ``_default_search_space`` -- ``AlgebraicFunction`` builds
-it automatically from ``_spec["default_bounds"]`` and ``n_dim``.
+it automatically from ``spec.default_bounds`` and ``n_dim``.
 
 Engineering function example
 ----------------------------

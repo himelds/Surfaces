@@ -227,9 +227,11 @@ def extract_metadata(func_class: Type) -> Dict[str, Any]:
     # Get default bounds
     default_bounds = getattr(func_class, "default_bounds", (-5.0, 5.0))
 
-    # Handle _spec attribute for bounds if default_bounds not set
-    if hasattr(func_class, "_spec") and "default_bounds" in func_class._spec:
-        default_bounds = func_class._spec["default_bounds"]
+    # Handle _spec attribute for bounds if default_bounds not set.
+    # cls._spec is a FunctionSpec dataclass; read the field by attribute.
+    spec_bounds = getattr(getattr(func_class, "_spec", None), "default_bounds", None)
+    if spec_bounds is not None:
+        default_bounds = spec_bounds
 
     # Get global optimum info
     f_global = getattr(func_class, "f_global", None)

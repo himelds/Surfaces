@@ -15,33 +15,8 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Optional, Tuple, Type
 
 
-class _DataclassMappingMixin:
-    """Small read-only mapping facade for compatibility with old dict callers."""
-
-    def as_dict(self) -> dict:
-        return dataclasses.asdict(self)
-
-    def get(self, key: str, default: Any = None) -> Any:
-        return self.as_dict().get(key, default)
-
-    def __getitem__(self, key: str) -> Any:
-        data = self.as_dict()
-        if key not in data:
-            raise KeyError(key)
-        return data[key]
-
-    def __contains__(self, key: str) -> bool:
-        return key in self.as_dict()
-
-    def keys(self):
-        return self.as_dict().keys()
-
-    def items(self):
-        return self.as_dict().items()
-
-
 @dataclass(frozen=True)
-class FunctionSpec(_DataclassMappingMixin):
+class FunctionSpec:
     """Immutable specification of a test function's mathematical properties.
 
     Every concrete test function class has exactly one resolved FunctionSpec
@@ -50,12 +25,21 @@ class FunctionSpec(_DataclassMappingMixin):
     ``_spec`` as a plain dict containing only the fields they want to
     override; the remaining fields are inherited from the parent's spec.
 
-    Attributes that vary per instance (n_dim on scalable functions,
-    f_global/x_global on BBOB) do NOT belong here. They live as instance
-    attributes or properties on the function class.
+    Fields that vary per instance (``n_dim`` on scalable functions,
+    ``f_global``/``x_global`` on functions with a known optimum) are declared
+    here with a neutral class-level default. Their per-instance value is
+    injected by the ``BaseTestFunction.spec`` property, which lifts the
+    matching instance attribute via ``dataclasses.replace`` on every access.
+    So ``cls._spec`` holds the static template and ``func.spec`` holds the
+    instance-resolved view.
 
     Display/identity attributes (name, latex_formula, reference) belong
     to :class:`MetaSpec` and are exposed through ``func.meta``.
+
+    Deferred cleanup (see project notes): ``func_id`` is currently kept here
+    but is catalogue identity and should move to :class:`MetaSpec`; the
+    top-level ``func.f_global``/``func.x_global`` attributes still exist as
+    the declaration site and should eventually become namespace-only.
     """
 
     n_dim: Optional[int] = None
@@ -89,9 +73,16 @@ class FunctionSpec(_DataclassMappingMixin):
 
     deprecated: bool = False
 
+    # Global optimum. Per-instance for some functions (e.g. BBOB), so the
+    # class-level default is None and the real value is lifted from the
+    # instance by the ``spec`` property. ``x_global`` is excluded from
+    # equality because an ndarray optimum cannot be compared with ``==``.
+    f_global: Optional[float] = None
+    x_global: Any = dataclasses.field(default=None, compare=False)
+
 
 @dataclass(frozen=True)
-class MetaSpec(_DataclassMappingMixin):
+class MetaSpec:
     """Immutable display and documentation metadata for a test function.
 
     Metadata is intentionally separate from ``FunctionSpec``. A function's
@@ -144,7 +135,7 @@ def _as_plain_dict(raw: Any, attr_name: str) -> dict[str, Any]:
     if raw is None:
         return {}
     if isinstance(raw, (FunctionSpec, MetaSpec)):
-        return raw.as_dict()
+        return dataclasses.asdict(raw)
     if isinstance(raw, Mapping):
         return dict(raw)
     raise TypeError(
@@ -230,7 +221,7 @@ def resolve_meta_spec(cls: Type, raw_spec: Any = None, raw_meta: Any = None) -> 
     }
 
     values = {
-        **parent_meta.as_dict(),
+        **dataclasses.asdict(parent_meta),
         **meta_from_spec,
         **meta_from_meta,
         **class_values,

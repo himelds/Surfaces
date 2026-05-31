@@ -45,6 +45,7 @@ Run only static checks (all tests are static now):
     pytest tests/core/properties/test_interface_compliance.py -m static -v
 """
 
+import dataclasses
 import importlib
 import inspect
 import pkgutil
@@ -246,7 +247,7 @@ def _get_merged_spec(cls: Type) -> Dict[str, Any]:
     """
     spec = getattr(cls, "_spec", None)
     if isinstance(spec, FunctionSpec):
-        return spec.as_dict()
+        return dataclasses.asdict(spec)
     if isinstance(spec, dict):
         return dict(spec)
     return {}
@@ -256,7 +257,7 @@ def _get_merged_meta(cls: Type) -> Dict[str, Any]:
     """Return the resolved MetaSpec as a plain dict."""
     meta = getattr(cls, "_meta", None)
     if isinstance(meta, MetaSpec):
-        return meta.as_dict()
+        return dataclasses.asdict(meta)
     if isinstance(meta, dict):
         return dict(meta)
     return {}

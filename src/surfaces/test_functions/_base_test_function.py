@@ -2,6 +2,7 @@
 # Email: simon.blanke@yahoo.com
 # License: MIT License
 
+import dataclasses
 import functools
 import re
 import time
@@ -163,14 +164,13 @@ class BaseTestFunction:
         # Private state: error handlers
         self._error_handlers: Optional[Dict[Type[Exception], float]] = catch_errors
 
-        # Accessor caches (lazy-loaded)
-        self._spec_accessor = None
+        # Accessor caches (lazy-loaded). spec/meta are resolved on the fly
+        # by their properties (returning dataclasses), so they are not cached.
         self._data_accessor = None
         self._callbacks_accessor = None
         self._modifiers_accessor = None
         self._memory_accessor = None
         self._errors_accessor = None
-        self._meta_accessor = None
 
         self._active_fidelity: Optional[float] = None
 
@@ -230,23 +230,33 @@ class BaseTestFunction:
         return self._default_search_space()
 
     @property
-    def spec(self):
-        """Function characteristics (SpecAccessor)."""
-        # Guard: spec may be accessed before __init__ completes (e.g., BBOB
-        # reads func_id in its __init__ before calling super().__init__).
-        try:
-            accessor = self._spec_accessor
-        except AttributeError:
-            accessor = None
-        if accessor is None:
-            from ._accessors import SpecAccessor
+    def spec(self) -> FunctionSpec:
+        """Instance-resolved function specification (a frozen FunctionSpec).
 
-            accessor = SpecAccessor(self)
-            try:
-                self._spec_accessor = accessor
-            except AttributeError:
-                pass  # __init__ hasn't set up slots yet
-        return accessor
+        ``type(self)._spec`` is the static class-level template. This property
+        overlays the fields that genuinely vary per instance (``n_dim``,
+        ``n_objectives``, ``f_global``, ``x_global``) by lifting them off the
+        instance, so that ``func.spec.n_dim`` reflects this instance's value.
+        It is resolved on every access rather than cached, because some
+        functions (e.g. BBOB) read ``spec`` during ``__init__`` before the
+        optimum has been computed, and a cached early value would go stale.
+        """
+        base = type(self)._spec
+        overrides = {}
+        for field_name in ("n_dim", "n_objectives", "f_global", "x_global"):
+            # Skip fields the function does not define at all (e.g.
+            # n_objectives on single-objective functions); their value comes
+            # from the class spec. Deliberately NOT a getattr-with-default or
+            # a bare ``except AttributeError``: those would also swallow an
+            # AttributeError raised by a genuinely broken property and hide a
+            # real bug. Checking class/instance definition first lets a real
+            # property error propagate while still tolerating undefined fields.
+            if field_name not in self.__dict__ and not hasattr(type(self), field_name):
+                continue
+            value = getattr(self, field_name)
+            if value is not None:
+                overrides[field_name] = value
+        return dataclasses.replace(base, **overrides) if overrides else base
 
     @property
     def data(self):
@@ -294,13 +304,13 @@ class BaseTestFunction:
         return self._errors_accessor
 
     @property
-    def meta(self):
-        """Function metadata (MetaAccessor)."""
-        if self._meta_accessor is None:
-            from ._accessors import MetaAccessor
+    def meta(self) -> MetaSpec:
+        """Instance display/identity metadata (a frozen MetaSpec).
 
-            self._meta_accessor = MetaAccessor(self)
-        return self._meta_accessor
+        Metadata is fully static today, so this returns the class-level
+        ``MetaSpec`` resolved at class-definition time.
+        """
+        return type(self)._meta
 
     @property
     def plot(self):

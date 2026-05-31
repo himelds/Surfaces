@@ -44,12 +44,12 @@ def func_id(func_class):
 def instantiate_function(func_class, **kwargs):
     """Instantiate a function class with appropriate parameters.
 
-    Uses the class's _spec['scalable'] attribute to determine if n_dim is required.
+    Uses the class's resolved _spec (a FunctionSpec) to determine if n_dim is required.
     """
     skip_if_missing_dependencies(func_class)
 
-    spec = getattr(func_class, "_spec", {})
-    is_scalable = spec.get("scalable", False)
+    spec = getattr(func_class, "_spec", None)
+    is_scalable = bool(getattr(spec, "scalable", False))
 
     if is_scalable and "n_dim" not in kwargs:
         kwargs["n_dim"] = 2

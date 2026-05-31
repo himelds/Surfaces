@@ -110,7 +110,7 @@ class TestBBOBFunctionProperties:
     def test_has_func_id(self, func_class):
         """Each BBOB function has a func_id between 1-24."""
         func = func_class(n_dim=2)
-        func_id_val = func.spec.get("func_id")
+        func_id_val = func.spec.func_id
         assert func_id_val is not None
         assert 1 <= func_id_val <= 24
 
@@ -118,7 +118,7 @@ class TestBBOBFunctionProperties:
     def test_func_id_matches_dict(self, func_class):
         """Function's func_id matches its position in BBOB_FUNCTIONS dict."""
         func = func_class(n_dim=2)
-        func_id_val = func.spec.get("func_id")
+        func_id_val = func.spec.func_id
         assert BBOB_FUNCTIONS.get(func_id_val) == func_class
 
     @pytest.mark.parametrize("func_class", ALL_BBOB, ids=func_id)
@@ -133,7 +133,7 @@ class TestBBOBFunctionProperties:
         """All BBOB functions have continuous spec (may be True or False)."""
         func = func_class(n_dim=2)
         # StepEllipsoidal is not continuous due to floor operation
-        assert "continuous" in func.spec or func.spec.get("continuous", True) is True
+        assert hasattr(func.spec, "continuous") or getattr(func.spec, "continuous", True) is True
 
 
 @pytest.mark.bbob
@@ -144,13 +144,13 @@ class TestSeparableFunctions:
     def test_separable_marked(self, func_class):
         """Separable functions should have separable=True in spec."""
         func = func_class(n_dim=2)
-        assert func.spec.get("separable", False) is True
+        assert getattr(func.spec, "separable", False) is True
 
     @pytest.mark.parametrize("func_class", SEPARABLE, ids=func_id)
     def test_func_id_range(self, func_class):
         """Separable functions have func_id 1-5."""
         func = func_class(n_dim=2)
-        assert 1 <= func.spec["func_id"] <= 5
+        assert 1 <= func.spec.func_id <= 5
 
 
 @pytest.mark.bbob
@@ -161,13 +161,13 @@ class TestHighConditioningFunctions:
     def test_unimodal_marked(self, func_class):
         """High conditioning functions are unimodal."""
         func = func_class(n_dim=2)
-        assert func.spec.get("unimodal", False) is True
+        assert getattr(func.spec, "unimodal", False) is True
 
     @pytest.mark.parametrize("func_class", HIGH_CONDITIONING, ids=func_id)
     def test_func_id_range(self, func_class):
         """High conditioning functions have func_id 10-14."""
         func = func_class(n_dim=2)
-        assert 10 <= func.spec["func_id"] <= 14
+        assert 10 <= func.spec.func_id <= 14
 
 
 @pytest.mark.bbob
@@ -178,7 +178,7 @@ class TestMultimodalFunctions:
     def test_not_unimodal(self, func_class):
         """Multimodal functions have unimodal=False."""
         func = func_class(n_dim=2)
-        assert func.spec.get("unimodal", True) is False
+        assert getattr(func.spec, "unimodal", True) is False
 
 
 @pytest.mark.bbob

@@ -39,13 +39,13 @@ def skip_if_missing_dependencies(func_class):
 def instantiate_function(func_class, n_dim=None):
     """Instantiate a test function with appropriate parameters.
 
-    Uses the class's _spec['scalable'] attribute to determine if n_dim is required,
-    rather than relying on try-except for control flow.
+    Uses the class's resolved _spec (a FunctionSpec) to determine if n_dim is
+    required, rather than relying on try-except for control flow.
     """
     skip_if_missing_dependencies(func_class)
 
-    spec = getattr(func_class, "_spec", {})
-    is_scalable = spec.get("scalable", False)
+    spec = getattr(func_class, "_spec", None)
+    is_scalable = bool(getattr(spec, "scalable", False))
 
     if is_scalable or n_dim is not None:
         dim = n_dim if n_dim is not None else 2

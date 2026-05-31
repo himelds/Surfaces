@@ -98,7 +98,7 @@ class TestNDFunctions:
     def test_spec_scalable(self, func_class):
         """ND functions have scalable=True."""
         func = instantiate_function(func_class, n_dim=5)
-        assert func.spec.get("scalable", False) is True
+        assert getattr(func.spec, "scalable", False) is True
 
     @pytest.mark.parametrize("func_class", algebraic_functions_nd, ids=func_id)
     def test_array_input(self, func_class):
@@ -204,7 +204,7 @@ class TestObjectiveDirection:
         func_min = instantiate_function(func_class)
         # Create maximize version using scalable attribute
         spec = getattr(func_class, "_spec", {})
-        if spec.get("scalable", False):
+        if getattr(spec, "scalable", False):
             func_max = func_class(n_dim=2, objective="maximize")
         else:
             func_max = func_class(objective="maximize")

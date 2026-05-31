@@ -1,158 +1,116 @@
-"""Tests for SpecAccessor: dict-like access to function characteristics."""
+"""Tests for ``func.spec``: the resolved FunctionSpec dataclass.
+
+``func.spec`` returns a frozen :class:`FunctionSpec` resolved for this
+instance (no accessor wrapper). Attribute access is the only read path;
+the old dict protocol (get/[]/in/as_dict) was removed.
+"""
+
+import dataclasses
 
 import pytest
 
-from surfaces.test_functions._accessors._spec import SpecAccessor
 from surfaces.test_functions._function_spec import FunctionSpec
 from surfaces.test_functions.algebraic import SphereFunction
 
 
 class TestSpecType:
-    """Test that spec returns the correct accessor type."""
+    """func.spec is a FunctionSpec dataclass, not an accessor."""
 
-    def test_spec_returns_accessor(self):
-        """func.spec returns a SpecAccessor, not a plain dict."""
+    def test_spec_returns_function_spec(self):
         func = SphereFunction(n_dim=2)
-        assert isinstance(func.spec, SpecAccessor)
+        assert isinstance(func.spec, FunctionSpec)
 
     def test_class_spec_is_function_spec(self):
         """Classes store the resolved static spec as FunctionSpec."""
         assert isinstance(SphereFunction._spec, FunctionSpec)
 
-    def test_as_dict_returns_plain_dict(self):
-        """func.spec.as_dict() returns a plain dict."""
+    def test_spec_is_frozen(self):
+        """The resolved spec is immutable."""
         func = SphereFunction(n_dim=2)
-        result = func.spec.as_dict()
-        assert isinstance(result, dict)
-        assert not isinstance(result, SpecAccessor)
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            func.spec.convex = False
 
-    def test_spec_is_cached(self):
-        """Repeated access returns the same accessor instance."""
+    def test_repeated_access_is_equal(self):
+        """Repeated access yields equal specs (resolved fresh each time)."""
         func = SphereFunction(n_dim=2)
-        assert func.spec is func.spec
+        params = {key: 0.5 for key in func.search_space.keys()}
+        spec1 = func.spec
+        _ = func(params)
+        assert func.spec == spec1
 
 
-class TestSpecProtocol:
-    """Test dict-like protocol on SpecAccessor."""
-
-    def test_getitem(self):
-        """Bracket access retrieves spec values."""
-        func = SphereFunction(n_dim=2)
-        assert func.spec["convex"] is True
-
-    def test_getitem_nonexistent_raises_key_error(self):
-        """Accessing a nonexistent key raises KeyError."""
-        func = SphereFunction(n_dim=2)
-        with pytest.raises(KeyError):
-            func.spec["nonexistent_key"]
-
-    def test_contains(self):
-        """'in' operator checks for key presence."""
-        func = SphereFunction(n_dim=2)
-        assert "convex" in func.spec
-        assert "nonexistent_key" not in func.spec
-
-    def test_get_with_default(self):
-        """get() returns default when key is missing."""
-        func = SphereFunction(n_dim=2)
-        assert func.spec.get("convex") is True
-        assert func.spec.get("nonexistent_key", "fallback") == "fallback"
-
-    def test_get_without_default_returns_none(self):
-        """get() returns None when key is missing and no default given."""
-        func = SphereFunction(n_dim=2)
-        assert func.spec.get("nonexistent_key") is None
-
-
-class TestSpecProperties:
-    """Test typed property accessors on SpecAccessor."""
+class TestSpecAttributes:
+    """Typed attribute access for static fields."""
 
     def test_convex(self):
-        """SphereFunction is convex."""
-        func = SphereFunction(n_dim=2)
-        assert func.spec.convex is True
+        assert SphereFunction(n_dim=2).spec.convex is True
 
     def test_unimodal(self):
-        """SphereFunction is unimodal."""
-        func = SphereFunction(n_dim=2)
-        assert func.spec.unimodal is True
+        assert SphereFunction(n_dim=2).spec.unimodal is True
 
     def test_separable(self):
-        """SphereFunction is separable."""
-        func = SphereFunction(n_dim=2)
-        assert func.spec.separable is True
+        assert SphereFunction(n_dim=2).spec.separable is True
 
     def test_continuous(self):
-        """SphereFunction is continuous (inherited from AlgebraicFunction)."""
-        func = SphereFunction(n_dim=2)
-        assert func.spec.continuous is True
+        assert SphereFunction(n_dim=2).spec.continuous is True
 
     def test_differentiable(self):
-        """SphereFunction is differentiable (inherited from AlgebraicFunction)."""
-        func = SphereFunction(n_dim=2)
-        assert func.spec.differentiable is True
+        assert SphereFunction(n_dim=2).spec.differentiable is True
 
     def test_scalable(self):
-        """SphereFunction is scalable."""
-        func = SphereFunction(n_dim=2)
-        assert func.spec.scalable is True
-
-    def test_n_objectives(self):
-        """SphereFunction has 1 objective (inherited from BaseTestFunction)."""
-        func = SphereFunction(n_dim=2)
-        assert func.spec.n_objectives == 1
+        assert SphereFunction(n_dim=2).spec.scalable is True
 
     def test_default_bounds(self):
-        """SphereFunction has default_bounds (-5.0, 5.0)."""
-        func = SphereFunction(n_dim=2)
-        assert func.spec.default_bounds == (-5.0, 5.0)
+        assert SphereFunction(n_dim=2).spec.default_bounds == (-5.0, 5.0)
+
+    def test_func_id_none_for_algebraic(self):
+        """func_id still lives on spec; it is None for non-catalogue functions."""
+        assert SphereFunction(n_dim=2).spec.func_id is None
 
 
-class TestSpecGlobalOptimum:
-    """Test global optimum access through SpecAccessor."""
+class TestSpecInstanceResolution:
+    """Per-instance fields are lifted onto the resolved spec."""
+
+    def test_n_dim_reflects_instance(self):
+        assert SphereFunction(n_dim=5).spec.n_dim == 5
+
+    def test_n_objectives(self):
+        assert SphereFunction(n_dim=2).spec.n_objectives == 1
 
     def test_f_global(self):
-        """SphereFunction has f_global=0.0."""
-        func = SphereFunction(n_dim=2)
-        assert func.spec.f_global == 0.0
+        assert SphereFunction(n_dim=2).spec.f_global == 0.0
 
     def test_x_global(self):
-        """SphereFunction has x_global at the origin."""
-        func = SphereFunction(n_dim=3)
-        assert func.spec.x_global == (0.0, 0.0, 0.0)
+        assert SphereFunction(n_dim=3).spec.x_global == (0.0, 0.0, 0.0)
+
+
+class TestNoDictProtocol:
+    """The dict-emulation surface was removed; attribute access only."""
+
+    def test_no_get_method(self):
+        assert not hasattr(SphereFunction(n_dim=2).spec, "get")
+
+    def test_not_subscriptable(self):
+        with pytest.raises(TypeError):
+            SphereFunction(n_dim=2).spec["convex"]
 
 
 class TestSpecResolution:
-    """Test that _spec declarations resolve correctly through the MRO.
+    """_spec declarations resolve through the MRO.
 
-    SphereFunction overrides convex, unimodal, separable, scalable.
-    AlgebraicFunction defines default_bounds, continuous, differentiable.
-    BaseTestFunction defines n_dim, n_objectives, func_id, and boolean defaults.
+    SphereFunction overrides convex/unimodal/separable/scalable;
+    AlgebraicFunction defines default_bounds/continuous/differentiable;
+    BaseTestFunction defines the boolean defaults.
     """
 
     def test_child_overrides_parent(self):
-        """SphereFunction._spec overrides BaseTestFunction._spec defaults."""
-        func = SphereFunction(n_dim=2)
-        spec = func.spec.as_dict()
+        spec = SphereFunction(n_dim=2).spec
+        assert spec.convex is True
+        assert spec.unimodal is True
+        assert spec.separable is True
+        assert spec.scalable is True
 
-        # SphereFunction sets these to True; BaseTestFunction defaults are False
-        assert spec["convex"] is True
-        assert spec["unimodal"] is True
-        assert spec["separable"] is True
-        assert spec["scalable"] is True
-
-    def test_parent_keys_preserved(self):
-        """Keys only defined in parent classes are still accessible."""
-        func = SphereFunction(n_dim=2)
-        spec = func.spec.as_dict()
-
-        # These come from BaseTestFunction._spec
-        assert "n_objectives" in spec
-        assert "func_id" in spec
-
-    def test_intermediate_class_keys_preserved(self):
-        """Keys from AlgebraicFunction (middle of MRO) are present."""
-        func = SphereFunction(n_dim=2)
-        spec = func.spec.as_dict()
-        assert spec["continuous"] is True
-        assert spec["differentiable"] is True
+    def test_intermediate_class_values_preserved(self):
+        spec = SphereFunction(n_dim=2).spec
+        assert spec.continuous is True
+        assert spec.differentiable is True

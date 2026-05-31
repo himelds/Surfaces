@@ -45,7 +45,7 @@ def _random_points_in_domain(func, rng, n_points):
         hi = bounds[:, 1]
         return rng.uniform(lo, hi, size=(n_points, func.n_dim))
 
-    lo, hi = func.spec.get("default_bounds", (0, 1))
+    lo, hi = getattr(func.spec, "default_bounds", (0, 1))
     return rng.uniform(lo, hi, size=(n_points, func.n_dim))
 
 
@@ -253,8 +253,8 @@ class TestMultiObjectiveSpec:
         """Functions have spec with expected keys."""
         func = _make_func(func_class)
         spec = func.spec
-        assert "continuous" in spec
-        assert "scalable" in spec
+        assert hasattr(spec, "continuous")
+        assert hasattr(spec, "scalable")
 
     def test_zdt1_requires_2_dims(self):
         """ZDT1 requires n_dim >= 2."""

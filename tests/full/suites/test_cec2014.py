@@ -94,6 +94,14 @@ class TestCEC2014GlobalOptimum:
             f"{func.name}: f(x_global)={result}, expected {func.f_global}"
         )
 
+    @pytest.mark.parametrize("func_class", [ShiftedSchwefel, ShiftedRotatedSchwefel])
+    def test_schwefel_global_optimum_precision(self, func_class):
+        """Schwefel optimum should not carry the rounded 418.9829 residual."""
+        func = func_class(n_dim=10)
+
+        assert func(func.x_global) == pytest.approx(func.f_global, abs=1e-8)
+        assert func.batch(np.asarray([func.x_global]))[0] == pytest.approx(func.f_global, abs=1e-8)
+
 
 class TestCEC2014FunctionProperties:
     """Test function properties and specs."""
@@ -116,21 +124,21 @@ class TestCEC2014FunctionProperties:
         """Each function must have specs defined."""
         func = func_class(n_dim=10)
         spec = func.spec
-        assert "continuous" in spec
-        assert "scalable" in spec
-        assert spec["scalable"] is True  # All CEC 2014 functions are scalable
+        assert hasattr(spec, "continuous")
+        assert hasattr(spec, "scalable")
+        assert spec.scalable is True  # All CEC 2014 functions are scalable
 
     @pytest.mark.parametrize("func_class", CEC2014_FUNCTIONS[:3])
     def test_unimodal_spec(self, func_class):
         """Unimodal functions (F1-F3) should have unimodal=True."""
         func = func_class(n_dim=10)
-        assert func.spec["unimodal"] is True
+        assert func.spec.unimodal is True
 
     @pytest.mark.parametrize("func_class", CEC2014_FUNCTIONS[3:])
     def test_multimodal_spec(self, func_class):
         """Multimodal functions (F4-F30) should have unimodal=False."""
         func = func_class(n_dim=10)
-        assert func.spec["unimodal"] is False
+        assert func.spec.unimodal is False
 
 
 class TestCEC2014Dimensions:
@@ -171,6 +179,14 @@ class TestCEC2014InputFormats:
         params = {f"x{i}": 0.0 for i in range(10)}
         result = func(params)
         assert np.isfinite(result)
+
+    def test_array_input_uses_numeric_coordinate_order_for_n_dim_20(self):
+        """Array input maps to x0, x1, x2, ..., not lexicographic keys."""
+        func = RotatedHighConditionedElliptic(n_dim=20)
+        x = np.linspace(-3.0, 4.0, func.n_dim)
+        params = {f"x{i}": x[i] for i in range(func.n_dim)}
+
+        assert func(x) == pytest.approx(func(params), rel=1e-12, abs=1e-12)
 
 
 class TestCEC2014DataIntegrity:

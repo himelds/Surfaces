@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Any, Dict, Optional, Type
 
 from surfaces.test_functions._function_spec import FunctionSpec, MetaSpec
@@ -15,7 +16,7 @@ def get_merged_spec(func_cls: Type) -> Dict[str, Any]:
     """Get resolved function spec for a class."""
     spec = getattr(func_cls, "_spec", FunctionSpec())
     if isinstance(spec, FunctionSpec):
-        return spec.as_dict()
+        return dataclasses.asdict(spec)
     return dict(spec)
 
 
@@ -23,7 +24,7 @@ def get_merged_meta(func_cls: Type) -> Dict[str, Any]:
     """Get resolved metadata for a class."""
     meta = getattr(func_cls, "_meta", MetaSpec())
     if isinstance(meta, MetaSpec):
-        return meta.as_dict()
+        return dataclasses.asdict(meta)
     return dict(meta)
 
 

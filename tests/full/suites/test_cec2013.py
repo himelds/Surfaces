@@ -4,6 +4,8 @@
 
 """Tests for CEC 2013 benchmark functions."""
 
+import dataclasses
+
 import numpy as np
 import pytest
 
@@ -190,7 +192,7 @@ class TestCEC2013Properties:
         """Each function has a spec dict."""
         func = func_class(n_dim=10)
         spec = func.spec
-        assert isinstance(spec.as_dict(), dict)
+        assert dataclasses.is_dataclass(spec)
 
     def test_function_count(self):
         """cec2013_functions contains all 28 functions."""

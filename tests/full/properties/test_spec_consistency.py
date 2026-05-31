@@ -27,4 +27,4 @@ class TestSpecStructure:
     def test_cec_has_func_id(self, func_class):
         """CEC functions have func_id in spec."""
         func = instantiate_function(func_class, n_dim=10)
-        assert "func_id" in func.spec
+        assert hasattr(func.spec, "func_id")
