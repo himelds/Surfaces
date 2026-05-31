@@ -48,7 +48,7 @@ class BoothFunction(AlgebraicFunction):
 
     _spec = {
         "eval_cost": 0.1,
-        "convex": False,
+        "convex": True,
         "unimodal": True,
         "separable": False,
         "scalable": False,

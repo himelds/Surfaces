@@ -4,13 +4,15 @@
 
 """CEC 2017 Benchmark Functions.
 
-This module provides the 30 benchmark functions from the CEC 2017 competition
-on single objective bound constrained real-parameter numerical optimization.
+This module provides the currently implemented simple benchmark functions from
+the CEC 2017 competition on single objective bound constrained real-parameter
+numerical optimization.
 
 Functions are organized into categories:
 - Simple (F1-F10): Shifted and rotated classical functions
-- Hybrid (F11-F20): Combinations of basic functions with variable partitioning
-- Composition (F21-F30): Complex landscapes from multiple functions
+
+Hybrid (F11-F20) and composition (F21-F30) functions are not exported here
+because they are not implemented in this package yet.
 
 Note: F2 has been deprecated from the official CEC 2017 benchmark suite.
 

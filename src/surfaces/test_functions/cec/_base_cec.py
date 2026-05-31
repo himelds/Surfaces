@@ -70,8 +70,14 @@ class CECFunction(AlgebraicFunction):
 
     @property
     def func_id(self) -> Optional[int]:
-        """Function ID within the CEC suite."""
-        return self.spec.get("func_id")
+        """Function ID within the CEC suite.
+
+        Read from the static class-level spec, not ``self.spec``: func_id is
+        constant per class, and ``self.spec`` resolution lifts ``f_global``,
+        which (for CEC) is derived from func_id, so routing through it would
+        recurse.
+        """
+        return type(self)._spec.func_id
 
     # Class-level cache for loaded data, keyed by (data_prefix, n_dim)
     _data_cache: Dict[Tuple[str, int], Dict[str, np.ndarray]] = {}
@@ -336,6 +342,10 @@ class CECFunction(AlgebraicFunction):
             Array of parameter values.
         """
         return np.array([params[f"x{i}"] for i in range(self.n_dim)])
+
+    def _array_input_param_names(self) -> List[str]:
+        """Use numeric CEC coordinate order for array-like scalar input."""
+        return [f"x{i}" for i in range(self.n_dim)]
 
     def _batch_shift(self, X: ArrayLike, index: int = None) -> ArrayLike:
         """Apply shift transformation to batch: Z = X - o.

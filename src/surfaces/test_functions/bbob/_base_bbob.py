@@ -68,8 +68,14 @@ class BBOBFunction(AlgebraicFunction):
 
     @property
     def func_id(self) -> Optional[int]:
-        """Function ID (1-24) within BBOB suite."""
-        return self.spec.get("func_id")
+        """Function ID (1-24) within BBOB suite.
+
+        Read from the static class-level spec rather than ``self.spec``:
+        func_id is constant per class, and ``self.spec`` resolution lifts the
+        per-instance optimum, so keeping func_id off that path avoids any
+        ordering or recursion coupling.
+        """
+        return type(self)._spec.func_id
 
     def __init__(
         self,

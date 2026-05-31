@@ -13,6 +13,8 @@ from surfaces._array_utils import ArrayLike, get_array_namespace
 
 from ._base_cec2017 import CEC2017Function
 
+_SCHWEFEL_OPTIMUM_OFFSET = 4.189828872724338e2
+
 
 class ShiftedRotatedBentCigar(CEC2017Function):
     """F1: Shifted and Rotated Bent Cigar Function.
@@ -478,7 +480,7 @@ class ShiftedRotatedSchwefel(CEC2017Function):
                 result += zm * np.sin(np.sqrt(abs(zm)))
                 result -= (zi + 500) ** 2 / (10000 * D)
 
-        return 418.9829 * D - result + self.f_global
+        return _SCHWEFEL_OPTIMUM_OFFSET * D - result + self.f_global
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
         """Vectorized batch evaluation."""
@@ -502,6 +504,6 @@ class ShiftedRotatedSchwefel(CEC2017Function):
         term3 = zm3 * xp.sin(xp.sqrt(xp.abs(zm3))) - (Z + 500) ** 2 / (10000 * D)
 
         contrib = xp.where(case1, term1, xp.where(case2, term2, term3))
-        result = 418.9829 * D - xp.sum(contrib, axis=1)
+        result = _SCHWEFEL_OPTIMUM_OFFSET * D - xp.sum(contrib, axis=1)
 
         return result + self.f_global

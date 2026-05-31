@@ -16,6 +16,8 @@ from surfaces._array_utils import ArrayLike, get_array_namespace
 
 from ._base_cec2014 import CEC2014Function
 
+_SCHWEFEL_OPTIMUM_OFFSET = 4.189828872724338e2
+
 
 class ShiftedRotatedRosenbrock(CEC2014Function):
     """F4: Shifted and Rotated Rosenbrock's Function.
@@ -372,7 +374,7 @@ class ShiftedSchwefel(CEC2014Function):
                     zi + 500
                 ) ** 2 / (10000 * self.n_dim)
 
-        result = 418.9829 * self.n_dim - result
+        result = _SCHWEFEL_OPTIMUM_OFFSET * self.n_dim - result
 
         return result + self.f_global
 
@@ -399,7 +401,7 @@ class ShiftedSchwefel(CEC2014Function):
         term3 = mod_term3 * xp.sin(xp.sqrt(xp.abs(mod_term3))) - (Z + 500) ** 2 / (10000 * D)
 
         terms = xp.where(in_bounds, term1, xp.where(is_positive, term2, term3))
-        result = 418.9829 * D - xp.sum(terms, axis=1)
+        result = _SCHWEFEL_OPTIMUM_OFFSET * D - xp.sum(terms, axis=1)
 
         return result + self.f_global
 
@@ -448,7 +450,7 @@ class ShiftedRotatedSchwefel(CEC2014Function):
                     zi + 500
                 ) ** 2 / (10000 * self.n_dim)
 
-        result = 418.9829 * self.n_dim - result
+        result = _SCHWEFEL_OPTIMUM_OFFSET * self.n_dim - result
 
         return result + self.f_global
 
@@ -475,7 +477,7 @@ class ShiftedRotatedSchwefel(CEC2014Function):
         term3 = mod_term3 * xp.sin(xp.sqrt(xp.abs(mod_term3))) - (Z + 500) ** 2 / (10000 * D)
 
         terms = xp.where(in_bounds, term1, xp.where(is_positive, term2, term3))
-        result = 418.9829 * D - xp.sum(terms, axis=1)
+        result = _SCHWEFEL_OPTIMUM_OFFSET * D - xp.sum(terms, axis=1)
 
         return result + self.f_global
 

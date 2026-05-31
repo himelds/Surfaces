@@ -171,5 +171,4 @@ class ODESimulationFunction(SimulationFunction):
     def _objective(self, params: Dict[str, Any]) -> float:
         """Sub-template: run ODE simulation and extract objective."""
         self._current_params = params  # Store for _extract_objective
-        result = self._run_simulation(params)
-        return self._extract_objective(result)
+        return super()._objective(params)

@@ -16,6 +16,8 @@ from surfaces._array_utils import ArrayLike, get_array_namespace
 
 from ._base_cec2014 import CEC2014Function
 
+_SCHWEFEL_OPTIMUM_OFFSET = 4.189828872724338e2
+
 
 class _HybridBase(CEC2014Function):
     """Base class for hybrid functions."""
@@ -142,7 +144,7 @@ def _schwefel(z: np.ndarray) -> float:
             result += (abs(zi) % 500 - 500) * np.sin(np.sqrt(abs(abs(zi) % 500 - 500))) - (
                 zi + 500
             ) ** 2 / (10000 * D)
-    return 418.9829 * D - result
+    return _SCHWEFEL_OPTIMUM_OFFSET * D - result
 
 
 def _weierstrass(z: np.ndarray) -> float:
@@ -298,7 +300,7 @@ def _batch_schwefel(Z: ArrayLike) -> ArrayLike:
         xp.where(Z_shifted > 500, term2, term3),
     )
 
-    return 418.9829 * D - xp.sum(result, axis=1)
+    return _SCHWEFEL_OPTIMUM_OFFSET * D - xp.sum(result, axis=1)
 
 
 def _batch_weierstrass(Z: ArrayLike) -> ArrayLike:
