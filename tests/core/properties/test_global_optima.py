@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from surfaces.test_functions.algebraic import algebraic_functions
-from surfaces.test_functions.benchmark.bbob import bbob_functions
+from surfaces.test_functions.bbob import bbob_functions
 from tests.conftest import func_id, instantiate_function
 
 
@@ -18,20 +18,18 @@ class TestAlgebraicGlobalOptima:
 
     @pytest.mark.parametrize("func_class", algebraic_functions, ids=func_id)
     def test_has_global_minimum(self, func_class):
-        """Functions have f_global attribute."""
+        """f_global is exposed on the spec and is None or numeric."""
         func = instantiate_function(func_class)
-        assert hasattr(func, "f_global") or "f_global" in func.spec
+        f_global = func.spec.f_global
+        assert f_global is None or isinstance(f_global, (int, float, np.floating))
 
     @pytest.mark.parametrize("func_class", algebraic_functions[:10], ids=func_id)
     def test_global_minimum_is_achievable(self, func_class):
         """Evaluating at x_global gives f_global (for subset)."""
         func = instantiate_function(func_class)
 
-        if not hasattr(func, "x_global") and "x_global" not in func.spec:
-            pytest.skip("No x_global defined")
-
-        x_global = getattr(func, "x_global", func.spec.get("x_global"))
-        f_global = getattr(func, "f_global", func.spec.get("f_global"))
+        x_global = func.spec.x_global
+        f_global = func.spec.f_global
 
         if x_global is None or f_global is None:
             pytest.skip("Global optimum not defined")
@@ -58,6 +56,6 @@ class TestBBOBGlobalOptima:
 
     @pytest.mark.parametrize("func_class", bbob_functions, ids=func_id)
     def test_bbob_has_global_minimum(self, func_class):
-        """BBOB functions have known global minimum."""
+        """BBOB functions expose a numeric global minimum."""
         func = instantiate_function(func_class, n_dim=2)
-        assert hasattr(func, "f_global") or "f_global" in func.spec
+        assert isinstance(func.spec.f_global, (int, float, np.floating))

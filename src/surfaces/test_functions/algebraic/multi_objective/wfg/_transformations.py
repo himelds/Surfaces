@@ -43,8 +43,12 @@ def b_param(y, u, A, B, C):
 
 
 def s_linear(y, A):
-    """Linear shift: |y - A| / max(A, 1-A)."""
-    return np.clip(np.abs(y - A) / np.maximum(A, 1 - A), 0, 1)
+    """Linear shift with asymmetric scaling around A."""
+    numerator = np.abs(y - A)
+    denominator = np.abs(np.floor(A - y) + A)
+    shifted = numerator / denominator
+    shifted = np.where(numerator <= 1e-12, 0.0, shifted)
+    return np.clip(shifted, 0, 1)
 
 
 def s_deceptive(y, A, B, C):

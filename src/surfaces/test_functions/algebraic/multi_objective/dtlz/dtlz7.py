@@ -10,6 +10,7 @@ parameters, while the last objective is a nonlinear function that
 creates :math:`2^{M-1}` disconnected segments on the Pareto front.
 """
 
+from itertools import product
 from typing import Any, Dict
 
 import numpy as np
@@ -17,6 +18,65 @@ import numpy as np
 from surfaces._array_utils import ArrayLike, get_array_namespace
 
 from .._base_multi_objective import BaseMultiObjectiveTestFunction
+
+_PARETO_POSITION_INTERVALS = (
+    (0.0, 0.25141183608891715),
+    (0.631626530700061, 0.8594008566446932),
+)
+
+
+def _phi(f_pos):
+    return f_pos * (1 + np.sin(3 * np.pi * f_pos))
+
+
+def _largest_remainder_counts(n_points, weights):
+    if n_points < 0:
+        raise ValueError(f"n_points must be >= 0, got {n_points}")
+
+    counts = np.zeros(len(weights), dtype=int)
+    if n_points == 0:
+        return counts
+
+    weights = np.asarray(weights, dtype=float)
+    fractions = n_points * weights / np.sum(weights)
+    counts += np.floor(fractions).astype(int)
+
+    deficit = n_points - int(np.sum(counts))
+    if deficit > 0:
+        remainders = fractions - counts
+        for idx in np.argsort(remainders)[::-1][:deficit]:
+            counts[idx] += 1
+
+    return counts
+
+
+def _pareto_position_samples(n_points, n_position):
+    if n_points < 0:
+        raise ValueError(f"n_points must be >= 0, got {n_points}")
+    if n_points == 0:
+        return np.empty((0, n_position))
+
+    regions = list(product(_PARETO_POSITION_INTERVALS, repeat=n_position))
+    volumes = [np.prod([hi - lo for lo, hi in region]) for region in regions]
+    counts = _largest_remainder_counts(n_points, volumes)
+
+    rng = np.random.default_rng(42)
+    samples = []
+    for region, count in zip(regions, counts):
+        if count == 0:
+            continue
+
+        if n_position == 1:
+            lo, hi = region[0]
+            samples.append(np.linspace(lo, hi, count).reshape(-1, 1))
+            continue
+
+        region_samples = np.zeros((count, n_position))
+        for dim, (lo, hi) in enumerate(region):
+            region_samples[:, dim] = rng.uniform(lo, hi, count)
+        samples.append(region_samples)
+
+    return np.vstack(samples)
 
 
 class DTLZ7(BaseMultiObjectiveTestFunction):
@@ -83,6 +143,7 @@ class DTLZ7(BaseMultiObjectiveTestFunction):
         "eval_cost": 1.8,
         "continuous": True,
         "differentiable": True,
+        "disconnected_front": True,
         "scalable": True,
         "default_bounds": (0.0, 1.0),
     }
@@ -114,36 +175,18 @@ class DTLZ7(BaseMultiObjectiveTestFunction):
         return f
 
     def _pareto_front(self, n_points: int) -> np.ndarray:
-        """Disconnected Pareto front regions with g=1 (x_dist=0)."""
+        """Disconnected nondominated Pareto front regions with g=1."""
         M = self.n_objectives
-        # With x_dist=0: g = 1, so (1+g) = 2
-        g_opt = 1.0
-        one_plus_g = 1 + g_opt
-
-        rng = np.random.default_rng(42)
-        if M == 2:
-            f_pos = np.linspace(0, 1, n_points).reshape(-1, 1)
-        else:
-            f_pos = rng.uniform(0, 1, (n_points, M - 1))
-
-        h = M - np.sum(
-            f_pos / one_plus_g * (1 + np.sin(3 * np.pi * f_pos)),
-            axis=1,
-        )
-        f_last = one_plus_g * h
+        f_pos = _pareto_position_samples(n_points, M - 1)
+        f_last = 2 * M - np.sum(_phi(f_pos), axis=1)
 
         return np.column_stack([f_pos, f_last])
 
     def _pareto_set(self, n_points: int) -> np.ndarray:
-        """Distance params at 0.0, position params vary in [0, 1]."""
+        """Distance params at 0.0, position params in nondominated intervals."""
         M = self.n_objectives
         x = np.zeros((n_points, self.n_dim))
-        # DTLZ7 optimum: x_dist = 0
-        if M == 2:
-            x[:, 0] = np.linspace(0, 1, n_points)
-        else:
-            rng = np.random.default_rng(42)
-            x[:, : M - 1] = rng.uniform(0, 1, (n_points, M - 1))
+        x[:, : M - 1] = _pareto_position_samples(n_points, M - 1)
         return x
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:

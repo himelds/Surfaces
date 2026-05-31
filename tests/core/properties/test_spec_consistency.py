@@ -4,10 +4,12 @@ These tests verify that function specifications (_spec) are
 properly defined and consistent across algebraic and BBOB functions.
 """
 
+import dataclasses
+
 import pytest
 
 from surfaces.test_functions.algebraic import algebraic_functions
-from surfaces.test_functions.benchmark.bbob import bbob_functions
+from surfaces.test_functions.bbob import bbob_functions
 from tests.conftest import func_id, instantiate_function
 
 
@@ -19,7 +21,7 @@ class TestSpecStructure:
         """Algebraic functions have spec property."""
         func = instantiate_function(func_class)
         spec = func.spec
-        assert isinstance(spec.as_dict(), dict)
+        assert dataclasses.is_dataclass(spec)
 
     @pytest.mark.parametrize("func_class", algebraic_functions, ids=func_id)
     def test_algebraic_spec_has_required_keys(self, func_class):
@@ -28,14 +30,14 @@ class TestSpecStructure:
         spec = func.spec
         required_keys = ["continuous", "differentiable", "default_bounds"]
         for key in required_keys:
-            assert key in spec, f"Spec missing required key: {key}"
+            assert hasattr(spec, key), f"Spec missing required key: {key}"
 
     @pytest.mark.parametrize("func_class", bbob_functions, ids=func_id)
     def test_bbob_has_func_id(self, func_class):
         """BBOB functions have func_id in spec."""
         func = instantiate_function(func_class, n_dim=2)
-        assert "func_id" in func.spec
-        assert isinstance(func.spec["func_id"], int)
+        assert hasattr(func.spec, "func_id")
+        assert isinstance(func.spec.func_id, int)
 
 
 class TestSpecConsistency:
@@ -51,14 +53,14 @@ class TestSpecConsistency:
         _ = func(params)
 
         spec2 = func.spec
-        assert spec1.as_dict() == spec2.as_dict()
+        assert spec1 == spec2
 
     @pytest.mark.parametrize("func_class", algebraic_functions, ids=func_id)
     def test_spec_same_for_different_instances(self, func_class):
         """Spec is identical for different instances of same class."""
         func1 = instantiate_function(func_class)
         func2 = instantiate_function(func_class)
-        assert func1.spec.as_dict() == func2.spec.as_dict()
+        assert func1.spec == func2.spec
 
 
 class TestSpecValues:
@@ -68,19 +70,19 @@ class TestSpecValues:
     def test_continuous_is_bool(self, func_class):
         """Continuous field is boolean."""
         func = instantiate_function(func_class)
-        assert isinstance(func.spec.get("continuous"), bool)
+        assert isinstance(func.spec.continuous, bool)
 
     @pytest.mark.parametrize("func_class", algebraic_functions, ids=func_id)
     def test_differentiable_is_bool(self, func_class):
         """Differentiable field is boolean."""
         func = instantiate_function(func_class)
-        assert isinstance(func.spec.get("differentiable"), bool)
+        assert isinstance(func.spec.differentiable, bool)
 
     @pytest.mark.parametrize("func_class", algebraic_functions, ids=func_id)
     def test_default_bounds_format(self, func_class):
         """Default bounds are tuple of two numbers."""
         func = instantiate_function(func_class)
-        bounds = func.spec.get("default_bounds")
+        bounds = func.spec.default_bounds
         assert isinstance(bounds, (list, tuple))
         assert len(bounds) == 2
         assert bounds[0] < bounds[1]

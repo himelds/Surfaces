@@ -282,8 +282,8 @@ class TestSimulationFunctionProperties:
         for func_cls in simulation_functions:
             assert hasattr(func_cls, "_spec")
             spec = func_cls._spec
-            assert spec.get("simulation_based") is True
-            assert spec.get("ode_based") is True
+            assert spec.simulation_based is True
+            assert spec.ode_based is True
 
 
 class TestSimulationTimeout:
@@ -336,6 +336,36 @@ class TestSimulationTimeout:
         func = self._make_slow_func(3.0, timeout=0.5, timeout_value=-999.0, memory=False)
         result = func({"x": 0.5})
         assert result == -999.0
+
+    def test_ode_timeout_exceeded_returns_fallback(self):
+        """ODE functions must use the SimulationFunction timeout path."""
+        import time as _time
+        from types import SimpleNamespace
+
+        from surfaces.test_functions.simulation import ODESimulationFunction
+
+        class _SlowODE(ODESimulationFunction):
+            requires = []
+
+            def _default_search_space(self):
+                return {"rate": np.linspace(0, 1, 10)}
+
+            def _get_initial_conditions(self):
+                return np.array([1.0])
+
+            def _ode_system(self, t, y, params):
+                return -params["rate"] * y
+
+            def _run_simulation(self, params):
+                _time.sleep(0.2)
+                return SimpleNamespace(t=np.array([0.0]), y=np.array([[1.0]]))
+
+            def _compute_objective(self, t, y, params):
+                return float(y[0, -1] * params["rate"])
+
+        func = _SlowODE(timeout=0.01, timeout_value=-123.0, memory=False)
+
+        assert func({"rate": 0.5}) == -123.0
 
     def test_timeout_returns_without_blocking(self):
         """Caller returns promptly, not after the full simulation duration."""

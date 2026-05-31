@@ -174,25 +174,41 @@ class BaseWFGFunction(BaseMultiObjectiveTestFunction):
             results[i] = self._objective(params)
         return results
 
+    @staticmethod
+    def _b_param_inverse_for_shift_optimum(u, target=0.35):
+        """Return y such that b_param(y, u, 0.98/49.98, 0.02, 50) == target."""
+        A = 0.98 / 49.98
+        B = 0.02
+        C = 50.0
+        v = A - (1.0 - 2.0 * u) * np.abs(np.floor(0.5 - u) + A)
+        exponent = B + (C - B) * v
+        return target ** (1.0 / exponent)
+
+    def _distance_optimum(self, y_position):
+        """Normalized distance variables that make the WFG distance term zero."""
+        return np.full(self._n_dist, 0.35)
+
     def _pareto_set(self, n_points):
         """WFG Pareto set.
 
         Position parameters vary to trace the front; distance parameters
-        are set to the values that make the distance component zero.
-        For most WFG problems with s_linear(A=0.35), the optimal
-        normalized position parameter value is 0.35.
+        are set to transformation-specific values that make the distance
+        component zero.
         """
         M = self.n_objectives
-        x = np.zeros((n_points, self.n_dim))
+        y = np.zeros((n_points, self.n_dim))
 
         if M == 2:
             t = np.linspace(0, 1, n_points)
             for i in range(self._k):
-                z_max = 2.0 * (i + 1)
-                x[:, i] = t * z_max
+                y[:, i] = t
         else:
             rng = np.random.default_rng(42)
             for i in range(self._k):
-                z_max = 2.0 * (i + 1)
-                x[:, i] = rng.uniform(0, z_max, n_points)
-        return x
+                y[:, i] = rng.uniform(0, 1, n_points)
+
+        for row in range(n_points):
+            y[row, self._k :] = self._distance_optimum(y[row, : self._k])
+
+        z_max = np.array([2.0 * (i + 1) for i in range(self.n_dim)])
+        return y * z_max

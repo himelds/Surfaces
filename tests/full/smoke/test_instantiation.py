@@ -10,10 +10,11 @@ import inspect
 import numpy as np
 import pytest
 
-import surfaces.test_functions.benchmark.cec.cec2013 as cec2013
-import surfaces.test_functions.benchmark.cec.cec2014 as cec2014
-import surfaces.test_functions.benchmark.cec.cec2017 as cec2017
+import surfaces.test_functions.cec.cec2013 as cec2013
+import surfaces.test_functions.cec.cec2014 as cec2014
+import surfaces.test_functions.cec.cec2017 as cec2017
 from surfaces.test_functions.machine_learning import machine_learning_functions
+from tests.conftest import skip_if_missing_dependencies
 
 # Build CEC function lists dynamically
 CEC2013_FUNCTIONS = [
@@ -43,10 +44,12 @@ def func_id(func_class):
 def instantiate_function(func_class, **kwargs):
     """Instantiate a function class with appropriate parameters.
 
-    Uses the class's _spec['scalable'] attribute to determine if n_dim is required.
+    Uses the class's resolved _spec (a FunctionSpec) to determine if n_dim is required.
     """
-    spec = getattr(func_class, "_spec", {})
-    is_scalable = spec.get("scalable", False)
+    skip_if_missing_dependencies(func_class)
+
+    spec = getattr(func_class, "_spec", None)
+    is_scalable = bool(getattr(spec, "scalable", False))
 
     if is_scalable and "n_dim" not in kwargs:
         kwargs["n_dim"] = 2

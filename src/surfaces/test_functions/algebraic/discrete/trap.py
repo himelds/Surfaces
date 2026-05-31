@@ -6,8 +6,6 @@
 
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import numpy as np
-
 from surfaces._array_utils import ArrayLike, get_array_namespace
 from surfaces.modifiers import BaseModifier
 
@@ -119,7 +117,7 @@ class TrapFunction(DiscreteFunction):
             block = X[:, block_start : block_start + k]
             u = xp.sum(block, axis=1).astype(int)
             # trap(u, k): k if u == k, else k - 1 - u
-            trap_vals = np.where(u == k, k, k - 1 - u)
+            trap_vals = xp.where(u == k, k, k - 1 - u)
             total_trap = total_trap + trap_vals
 
         return self.n_dim - total_trap

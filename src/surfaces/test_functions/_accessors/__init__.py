@@ -1,19 +1,21 @@
-"""Accessor classes for BaseTestFunction."""
+"""Accessor classes for BaseTestFunction.
+
+``spec`` and ``meta`` are intentionally NOT accessors: ``func.spec`` and
+``func.meta`` return the resolved ``FunctionSpec`` / ``MetaSpec`` dataclasses
+directly (single source of truth). The accessors below wrap genuinely
+behavioral, mutable instance state.
+"""
 
 from ._callbacks import CallbackAccessor
 from ._data import DataAccessor
 from ._errors import ErrorAccessor
 from ._memory import MemoryAccessor
-from ._meta import MetaAccessor
 from ._modifiers import ModifierAccessor
-from ._spec import SpecAccessor
 
 __all__ = [
     "CallbackAccessor",
     "DataAccessor",
     "ErrorAccessor",
     "MemoryAccessor",
-    "MetaAccessor",
     "ModifierAccessor",
-    "SpecAccessor",
 ]

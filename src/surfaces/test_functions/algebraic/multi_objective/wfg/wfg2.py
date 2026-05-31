@@ -67,9 +67,9 @@ class WFG2(BaseWFGFunction):
     }
 
     def __init__(self, n_objectives=3, k=None, n_dist=20, **kwargs):
-        if n_dist % 2 != 0:
-            raise ValueError(f"n_dist must be even for WFG2, got n_dist={n_dist}")
         super().__init__(n_objectives=n_objectives, k=k, n_dist=n_dist, **kwargs)
+        if self._n_dist % 2 != 0:
+            raise ValueError(f"n_dist must be even for WFG2, got n_dist={self._n_dist}")
 
     def _transform(self, y):
         n = self.n_dim
@@ -97,20 +97,18 @@ class WFG2(BaseWFGFunction):
         x_M = x[M - 1]
         for m in range(M - 1):
             f[m] = x_M + self._S[m] * convex(x_head, M, m)
-        f[M - 1] = x_M + self._S[M - 1] * disconnected(x_head, 1, 1, 5)
+        f[M - 1] = x_M + self._S[M - 1] * disconnected(x_head, 5, 1.0, 1.0)
         return f
 
     def _pareto_front(self, n_points):
         """Convex-disconnected Pareto front."""
         M = self.n_objectives
         if M == 2:
-            t = np.linspace(0, np.pi / 2, n_points)
+            x0 = np.linspace(0, 1, n_points)
             h = np.column_stack(
                 [
-                    1 - np.cos(t),
-                    1
-                    - np.sin(t / (np.pi / 2) * np.pi / 2) ** 1
-                    * np.cos(1 * np.sin(t / (np.pi / 2)) ** 5 * np.pi) ** 2,
+                    1 - np.cos(x0 * np.pi / 2),
+                    1 - x0 * np.cos(5 * np.pi * x0) ** 2,
                 ]
             )
         else:
@@ -120,5 +118,5 @@ class WFG2(BaseWFGFunction):
             for i in range(n_points):
                 for m in range(M - 1):
                     h[i, m] = convex(x_head[i], M, m)
-                h[i, M - 1] = disconnected(x_head[i], 1, 1, 5)
+                h[i, M - 1] = disconnected(x_head[i], 5, 1.0, 1.0)
         return self._S * h

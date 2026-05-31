@@ -4,11 +4,14 @@
 
 """Tests for CEC 2017 benchmark functions."""
 
+import dataclasses
+
 import numpy as np
 import pytest
 
-from surfaces.test_functions.benchmark.cec.cec2017 import (
+from surfaces.test_functions.cec.cec2017 import (
     ShiftedRotatedBentCigar,
+    ShiftedRotatedSchwefel,
     cec2017_functions,
 )
 
@@ -58,6 +61,14 @@ class TestCEC2017Evaluation:
             x = rng.uniform(-100, 100, size=10)
             result = func(x)
             assert np.isfinite(result)
+
+    def test_array_input_uses_numeric_coordinate_order_for_n_dim_20(self):
+        """Array input maps to x0, x1, x2, ..., not lexicographic keys."""
+        func = ShiftedRotatedBentCigar(n_dim=20)
+        x = np.linspace(-3.0, 4.0, func.n_dim)
+        params = {f"x{i}": x[i] for i in range(func.n_dim)}
+
+        assert func(x) == pytest.approx(func(params), rel=1e-12, abs=1e-12)
 
 
 class TestCEC2017BatchEvaluation:
@@ -112,8 +123,8 @@ class TestCEC2017Properties:
         """Each function has a spec dict."""
         func = func_class(n_dim=10)
         spec = func.spec
-        assert isinstance(spec.as_dict(), dict)
-        assert "scalable" in spec
+        assert dataclasses.is_dataclass(spec)
+        assert hasattr(spec, "scalable")
 
     def test_function_count(self):
         """cec2017_functions contains all 10 simple functions."""
@@ -151,3 +162,10 @@ class TestCEC2017Objective:
         func = ShiftedRotatedBentCigar(n_dim=10, objective="maximize")
         result = func(func.x_global)
         assert result == -func.f_global
+
+    def test_schwefel_global_optimum_precision(self):
+        """Schwefel optimum should not carry the rounded 418.9829 residual."""
+        func = ShiftedRotatedSchwefel(n_dim=10)
+
+        assert func(func.x_global) == pytest.approx(func.f_global, abs=1e-8)
+        assert func.batch(np.asarray([func.x_global]))[0] == pytest.approx(func.f_global, abs=1e-8)

@@ -70,6 +70,7 @@ class EngineeringFunction(BaseSingleObjectiveTestFunction):
     # Subclasses should define these
     variable_names: List[str] = []
     variable_bounds: List[Tuple[float, float]] = []
+    constraint_tolerance: float = 1e-8
 
     def __init__(
         self,
@@ -101,6 +102,10 @@ class EngineeringFunction(BaseSingleObjectiveTestFunction):
             search_space_[name] = values
 
         return search_space_
+
+    def _array_input_param_names(self) -> List[str]:
+        """Use the engineering benchmark's published variable order."""
+        return list(self.variable_names)
 
     def _get_values(self, params: Dict[str, Any]) -> np.ndarray:
         """Extract variable values from params dict in order."""
@@ -141,7 +146,7 @@ class EngineeringFunction(BaseSingleObjectiveTestFunction):
         list of float
             Violation amounts. Zero means constraint is satisfied.
         """
-        return [max(0, g) for g in self._constraints(params)]
+        return [g if g > self.constraint_tolerance else 0 for g in self._constraints(params)]
 
     def is_feasible(self, params: Dict[str, Any]) -> bool:
         """Check if a solution satisfies all constraints.
@@ -156,7 +161,7 @@ class EngineeringFunction(BaseSingleObjectiveTestFunction):
         bool
             True if all constraints are satisfied.
         """
-        return all(g <= 0 for g in self._constraints(params))
+        return all(g <= self.constraint_tolerance for g in self._constraints(params))
 
     def penalty(self, params: Dict[str, Any]) -> float:
         """Calculate total penalty for constraint violations.
@@ -252,8 +257,8 @@ class EngineeringFunction(BaseSingleObjectiveTestFunction):
         """
         xp = get_array_namespace(X)
         G = self._batch_constraints(X)  # Shape: (n_points, n_constraints)
-        # Violations: max(0, g)^2
-        violations = xp.maximum(G, 0.0) ** 2
+        # Treat roundoff-level residuals on active constraints as feasible.
+        violations = xp.where(G > self.constraint_tolerance, G, 0.0) ** 2
         # Sum over constraints
         return self.penalty_coefficient * xp.sum(violations, axis=1)
 

@@ -54,7 +54,7 @@ class BukinFunctionN6(AlgebraicFunction):
         "separable": False,
         "scalable": False,
         "differentiable": False,
-        "default_bounds": (-8.0, 8.0),
+        "default_bounds": (-15.0, 3.0),
     }
 
     f_global = 0.0
@@ -86,6 +86,9 @@ class BukinFunctionN6(AlgebraicFunction):
         super().__init__(objective, modifiers, memory, collect_data, callbacks, catch_errors)
         self.n_dim = 2
 
+    def _default_search_space(self) -> Dict[str, Any]:
+        return self._search_space()
+
     def _objective(self, params: Dict[str, Any]) -> float:
         x = params["x0"]
         y = params["x1"]
@@ -114,11 +117,19 @@ class BukinFunctionN6(AlgebraicFunction):
 
     def _search_space(
         self,
-        min: float = -8,
-        max: float = 8,
+        min: Optional[Union[float, List[float]]] = None,
+        max: Optional[Union[float, List[float]]] = None,
         value_types: str = "array",
         size: int = 10000,
     ) -> Dict[str, Any]:
+        if min is None and max is None:
+            min = [-15.0, -3.0]
+            max = [-5.0, 3.0]
+        elif min is None:
+            min = [-15.0, -3.0] if isinstance(max, list) else -15.0
+        elif max is None:
+            max = [-5.0, 3.0] if isinstance(min, list) else 3.0
+
         return super()._create_n_dim_search_space(
             min=min, max=max, size=size, value_types=value_types
         )

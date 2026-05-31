@@ -4,10 +4,12 @@
 
 """Tests for CEC 2013 benchmark functions."""
 
+import dataclasses
+
 import numpy as np
 import pytest
 
-from surfaces.test_functions.benchmark.cec.cec2013 import (
+from surfaces.test_functions.cec.cec2013 import (
     CompositionFunction1,
     CompositionFunction2,
     CompositionFunction3,
@@ -170,9 +172,12 @@ class TestCEC2013Properties:
 
     @pytest.mark.parametrize("func_class", ALL_FUNCTIONS)
     def test_f_global_matches_convention(self, func_class):
-        """f_global follows the -1400 + (func_id - 1) * 100 convention."""
+        """f_global follows the CEC 2013 report table."""
         func = func_class(n_dim=10)
-        expected = -1400 + (func.func_id - 1) * 100
+        if func.func_id <= 14:
+            expected = -1400 + (func.func_id - 1) * 100
+        else:
+            expected = -1400 + func.func_id * 100
         assert func.f_global == expected
 
     @pytest.mark.parametrize("func_class", ALL_FUNCTIONS)
@@ -187,7 +192,7 @@ class TestCEC2013Properties:
         """Each function has a spec dict."""
         func = func_class(n_dim=10)
         spec = func.spec
-        assert isinstance(spec.as_dict(), dict)
+        assert dataclasses.is_dataclass(spec)
 
     def test_function_count(self):
         """cec2013_functions contains all 28 functions."""

@@ -20,7 +20,7 @@ class PolynomialFeatureTransformationFunction(BaseTabularFeatureEngineering):
     Parameters
     ----------
     dataset : str, default="diabetes"
-        Dataset to use for evaluation. One of: "diabetes", "california_housing".
+        Dataset to use for evaluation. One of: "diabetes", "california".
     cv : int, default=5
         Number of cross-validation folds.
     objective : str, default="maximize"
@@ -41,7 +41,7 @@ class PolynomialFeatureTransformationFunction(BaseTabularFeatureEngineering):
     _spec = {"eval_cost": 531.0}
     _dependencies = {"ml": ["sklearn"]}
 
-    available_datasets = ["diabetes", "california_housing"]
+    available_datasets = ["diabetes", "california"]
     available_cv = [2, 3, 5, 10]
 
     para_names = ["degree", "interaction_only", "include_bias"]
@@ -92,18 +92,24 @@ class PolynomialFeatureTransformationFunction(BaseTabularFeatureEngineering):
     def _ml_objective(self, params: Dict[str, Any]) -> float:
         from sklearn.linear_model import Ridge
         from sklearn.model_selection import cross_val_score
+        from sklearn.pipeline import Pipeline
         from sklearn.preprocessing import PolynomialFeatures
 
         X, y = self._get_training_data()
 
-        poly = PolynomialFeatures(
-            degree=params["degree"],
-            interaction_only=params["interaction_only"],
-            include_bias=params["include_bias"],
+        model = Pipeline(
+            [
+                (
+                    "polynomial_features",
+                    PolynomialFeatures(
+                        degree=params["degree"],
+                        interaction_only=params["interaction_only"],
+                        include_bias=params["include_bias"],
+                    ),
+                ),
+                ("model", Ridge(alpha=1.0, random_state=42)),
+            ]
         )
-        X_poly = poly.fit_transform(X)
 
-        model = Ridge(alpha=1.0, random_state=42)
-
-        scores = cross_val_score(model, X_poly, y, cv=self.cv, scoring="r2")
+        scores = cross_val_score(model, X, y, cv=self.cv, scoring="r2", error_score="raise")
         return scores.mean()

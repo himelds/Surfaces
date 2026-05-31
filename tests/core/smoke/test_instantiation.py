@@ -13,7 +13,7 @@ from surfaces.test_functions.algebraic import (
     algebraic_functions_nd,
 )
 from surfaces.test_functions.algebraic.constrained import constrained_functions
-from surfaces.test_functions.benchmark.bbob import bbob_functions
+from surfaces.test_functions.bbob import bbob_functions
 
 
 def func_id(func_class):
@@ -24,10 +24,10 @@ def func_id(func_class):
 def instantiate_function(func_class, **kwargs):
     """Instantiate a function class with appropriate parameters.
 
-    Uses the class's _spec['scalable'] attribute to determine if n_dim is required.
+    Uses the class's resolved _spec (a FunctionSpec) to determine if n_dim is required.
     """
-    spec = getattr(func_class, "_spec", {})
-    is_scalable = spec.get("scalable", False)
+    spec = getattr(func_class, "_spec", None)
+    is_scalable = bool(getattr(spec, "scalable", False))
 
     if is_scalable and "n_dim" not in kwargs:
         kwargs["n_dim"] = 2
@@ -117,5 +117,5 @@ class TestBBOBInstantiation:
     def test_bbob_has_func_id(self, func_class):
         """BBOB functions have func_id in spec."""
         func = instantiate_function(func_class, n_dim=2)
-        assert func.spec.get("func_id") is not None
-        assert 1 <= func.spec["func_id"] <= 24
+        assert func.spec.func_id is not None
+        assert 1 <= func.spec.func_id <= 24

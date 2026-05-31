@@ -97,14 +97,10 @@ class RandomForestImageClassifierFunction(BaseImageClassification):
         from sklearn.decomposition import PCA
         from sklearn.ensemble import RandomForestClassifier
         from sklearn.model_selection import cross_val_score
+        from sklearn.pipeline import Pipeline
         from sklearn.preprocessing import StandardScaler
 
         X_raw, y = self._get_training_data()
-
-        scaler = StandardScaler()
-        pca = PCA(n_components=self.n_components, random_state=42)
-        X_scaled = scaler.fit_transform(X_raw)
-        X = pca.fit_transform(X_scaled)
 
         model = RandomForestClassifier(
             n_estimators=params["n_estimators"],
@@ -112,7 +108,21 @@ class RandomForestImageClassifierFunction(BaseImageClassification):
             random_state=42,
             n_jobs=-1,
         )
-        scores = cross_val_score(model, X, y, cv=self.cv, scoring="accuracy")
+        pipeline = Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                ("pca", PCA(n_components=self.n_components, random_state=42)),
+                ("model", model),
+            ]
+        )
+        scores = cross_val_score(
+            pipeline,
+            X_raw,
+            y,
+            cv=self.cv,
+            scoring="accuracy",
+            error_score="raise",
+        )
         return scores.mean()
 
     def _get_surrogate_params(self, params: Dict[str, Any]) -> Dict[str, Any]:

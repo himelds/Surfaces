@@ -106,23 +106,25 @@ from surfaces.test_functions.algebraic import SphereFunction
 # Create a 3-dimensional Sphere function
 sphere = SphereFunction(n_dim=3)
 
-# Get the search space (NumPy arrays for each dimension)
-print(sphere.search_space)
-# {'x0': array([-5.12, ..., 5.12]), 'x1': array([...]), 'x2': array([...])}
+# Get the search space parameter names
+print(list(sphere.search_space))
+# ['x0', 'x1', 'x2']
 
 # Evaluate at a point
 result = sphere({"x0": 0.5, "x1": -0.3, "x2": 0.1})
-print(f"Value: {result}")  # Value: -0.35 (negated for maximization)
+print(f"Value: {result}")  # Value: 0.35
 
 # Access the global optimum
-print(f"Optimum: {sphere.global_optimum}")  # Optimum at origin
+print(f"Optimum position: {sphere.x_global}")  # Optimum at origin
+print(f"Optimum value: {sphere.f_global}")
 ```
 
 **Output:**
 ```
-{'x0': array([-5.12, ..., 5.12]), 'x1': array([...]), 'x2': array([...])}
-Value: -0.35
-Optimum: {'x0': 0.0, 'x1': 0.0, 'x2': 0.0}
+['x0', 'x1', 'x2']
+Value: 0.35
+Optimum position: (0.0, 0.0, 0.0)
+Optimum value: 0.0
 ```
 
 <br>
@@ -315,7 +317,7 @@ score_full = func(params, fidelity=1.0)
 <summary><b>Benchmark Suites</b></summary>
 
 ```python
-from surfaces.test_functions.benchmark.bbob import (
+from surfaces.test_functions.bbob import (
     Sphere as BBOBSphere,
     RosenbrockOriginal as BBOBRosenbrock,
 )
@@ -398,21 +400,14 @@ from surfaces.test_functions.algebraic import AckleyFunction
 # Surfaces works with any optimizer accepting callable + search space
 func = AckleyFunction()
 
-# Example with Hyperactive
-from hyperactive import Hyperactive
-
-hyper = Hyperactive()
-hyper.add_search(func, func.search_space, n_iter=100)
-hyper.run()
-
-print(f"Best score: {hyper.best_score(func)}")
-print(f"Best params: {hyper.best_para(func)}")
-
 # Example with Gradient-Free-Optimizers
 from gradient_free_optimizers import BayesianOptimizer
 
 opt = BayesianOptimizer(func.search_space)
 opt.search(func, n_iter=50)
+
+print(f"Best score: {opt.best_score}")
+print(f"Best params: {opt.best_para}")
 ```
 
 </details>

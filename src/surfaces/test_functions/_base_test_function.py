@@ -2,6 +2,7 @@
 # Email: simon.blanke@yahoo.com
 # License: MIT License
 
+import dataclasses
 import functools
 import re
 import time
@@ -11,6 +12,8 @@ import numpy as np
 
 from surfaces._array_utils import ArrayLike, is_array_like
 from surfaces.modifiers import BaseModifier
+
+from ._function_spec import FunctionSpec, MetaSpec, resolve_function_spec, resolve_meta_spec
 
 
 def _check_dependencies_after_init(init_func):
@@ -71,11 +74,17 @@ class BaseTestFunction:
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
+        raw_spec = cls.__dict__.get("_spec")
+        raw_meta = cls.__dict__.get("_meta")
+
         # Auto-derive name if not explicitly defined
         if "name" not in cls.__dict__:
-            spec = cls.__dict__.get("_spec", {})
-            if isinstance(spec, dict) and "name" in spec:
-                cls.name = spec["name"]
+            spec_name = raw_spec.get("name") if hasattr(raw_spec, "get") else None
+            meta_name = raw_meta.get("name") if hasattr(raw_meta, "get") else None
+            if meta_name is not None:
+                cls.name = meta_name
+            elif spec_name is not None:
+                cls.name = spec_name
             else:
                 raw = cls.__name__.removesuffix("Function")
                 cls.name = (
@@ -88,21 +97,24 @@ class BaseTestFunction:
                 )
         # Auto-derive _name_ if not explicitly defined
         if "_name_" not in cls.__dict__:
-            cls._name_ = cls.name.lower().replace(" ", "_")
+            meta_slug = raw_meta.get("slug") if hasattr(raw_meta, "get") else None
+            legacy_meta_slug = raw_meta.get("_name_") if hasattr(raw_meta, "get") else None
+            if meta_slug is not None:
+                cls._name_ = meta_slug
+            elif legacy_meta_slug is not None:
+                cls._name_ = legacy_meta_slug
+            else:
+                cls._name_ = cls.name.lower().replace(" ", "_")
 
-    _spec: Dict[str, Any] = {
-        "n_dim": None,
-        "n_objectives": 1,
-        "default_bounds": (-5.0, 5.0),
-        "func_id": None,
-        "continuous": True,
-        "differentiable": True,
-        "convex": False,
-        "separable": False,
-        "unimodal": False,
-        "scalable": False,
-        "eval_cost": None,
-    }
+        cls._spec = resolve_function_spec(cls, raw_spec)
+        cls._meta = resolve_meta_spec(cls, raw_spec, raw_meta)
+        if cls._meta.name is not None:
+            cls.name = cls._meta.name
+        if cls._meta.slug is not None:
+            cls._name_ = cls._meta.slug
+
+    _spec: FunctionSpec = FunctionSpec()
+    _meta: MetaSpec = MetaSpec(name="Base Test Function", slug="base_test_function")
 
     f_global: Optional[float] = None
     x_global: Optional[np.ndarray] = None
@@ -152,14 +164,13 @@ class BaseTestFunction:
         # Private state: error handlers
         self._error_handlers: Optional[Dict[Type[Exception], float]] = catch_errors
 
-        # Accessor caches (lazy-loaded)
-        self._spec_accessor = None
+        # Accessor caches (lazy-loaded). spec/meta are resolved on the fly
+        # by their properties (returning dataclasses), so they are not cached.
         self._data_accessor = None
         self._callbacks_accessor = None
         self._modifiers_accessor = None
         self._memory_accessor = None
         self._errors_accessor = None
-        self._meta_accessor = None
 
         self._active_fidelity: Optional[float] = None
 
@@ -219,23 +230,33 @@ class BaseTestFunction:
         return self._default_search_space()
 
     @property
-    def spec(self):
-        """Function characteristics (SpecAccessor)."""
-        # Guard: spec may be accessed before __init__ completes (e.g., BBOB
-        # reads func_id in its __init__ before calling super().__init__).
-        try:
-            accessor = self._spec_accessor
-        except AttributeError:
-            accessor = None
-        if accessor is None:
-            from ._accessors import SpecAccessor
+    def spec(self) -> FunctionSpec:
+        """Instance-resolved function specification (a frozen FunctionSpec).
 
-            accessor = SpecAccessor(self)
-            try:
-                self._spec_accessor = accessor
-            except AttributeError:
-                pass  # __init__ hasn't set up slots yet
-        return accessor
+        ``type(self)._spec`` is the static class-level template. This property
+        overlays the fields that genuinely vary per instance (``n_dim``,
+        ``n_objectives``, ``f_global``, ``x_global``) by lifting them off the
+        instance, so that ``func.spec.n_dim`` reflects this instance's value.
+        It is resolved on every access rather than cached, because some
+        functions (e.g. BBOB) read ``spec`` during ``__init__`` before the
+        optimum has been computed, and a cached early value would go stale.
+        """
+        base = type(self)._spec
+        overrides = {}
+        for field_name in ("n_dim", "n_objectives", "f_global", "x_global"):
+            # Skip fields the function does not define at all (e.g.
+            # n_objectives on single-objective functions); their value comes
+            # from the class spec. Deliberately NOT a getattr-with-default or
+            # a bare ``except AttributeError``: those would also swallow an
+            # AttributeError raised by a genuinely broken property and hide a
+            # real bug. Checking class/instance definition first lets a real
+            # property error propagate while still tolerating undefined fields.
+            if field_name not in self.__dict__ and not hasattr(type(self), field_name):
+                continue
+            value = getattr(self, field_name)
+            if value is not None:
+                overrides[field_name] = value
+        return dataclasses.replace(base, **overrides) if overrides else base
 
     @property
     def data(self):
@@ -283,13 +304,13 @@ class BaseTestFunction:
         return self._errors_accessor
 
     @property
-    def meta(self):
-        """Function metadata (MetaAccessor)."""
-        if self._meta_accessor is None:
-            from ._accessors import MetaAccessor
+    def meta(self) -> MetaSpec:
+        """Instance display/identity metadata (a frozen MetaSpec).
 
-            self._meta_accessor = MetaAccessor(self)
-        return self._meta_accessor
+        Metadata is fully static today, so this returns the class-level
+        ``MetaSpec`` resolved at class-definition time.
+        """
+        return type(self)._meta
 
     @property
     def plot(self):
@@ -354,7 +375,7 @@ class BaseTestFunction:
     ) -> Dict[str, Any]:
         """Convert any input format to dict."""
         if isinstance(params, (np.ndarray, list, tuple)):
-            param_names = sorted(self.search_space.keys())
+            param_names = self._array_input_param_names()
             if len(params) != len(param_names):
                 raise ValueError(f"Expected {len(param_names)} values, got {len(params)}")
             return {name: params[i] for i, name in enumerate(param_names)}
@@ -362,6 +383,15 @@ class BaseTestFunction:
         if params is None:
             params = {}
         return {**params, **kwargs}
+
+    def _array_input_param_names(self) -> List[str]:
+        """Parameter order used for 1D array/list/tuple input.
+
+        The default preserves the historical contract: array-like scalar
+        evaluations are mapped by alphabetically sorted search-space keys.
+        Subclasses with a domain-specific positional order can override this.
+        """
+        return sorted(self.search_space.keys())
 
     def _params_to_cache_key(
         self, params: Dict[str, Any], fidelity: Optional[float] = None

@@ -6,9 +6,10 @@ return the correct value when evaluated at the optimum.
 
 import inspect
 
+import numpy as np
 import pytest
 
-import surfaces.test_functions.benchmark.cec.cec2014 as cec2014
+import surfaces.test_functions.cec.cec2014 as cec2014
 from tests.conftest import func_id, instantiate_function
 
 CEC2014_FUNCTIONS = [
@@ -25,6 +26,6 @@ class TestCECGlobalOptima:
 
     @pytest.mark.parametrize("func_class", CEC2014_UNIMODAL, ids=func_id)
     def test_cec_unimodal_has_global(self, func_class):
-        """CEC unimodal functions have global minimum."""
+        """CEC unimodal functions expose a numeric global minimum."""
         func = instantiate_function(func_class, n_dim=10)
-        assert hasattr(func, "f_global") or "f_global" in func.spec
+        assert isinstance(func.spec.f_global, (int, float, np.floating))

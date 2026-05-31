@@ -25,7 +25,8 @@ class PressureVesselFunction(EngineeringFunction):
     -------------------
     The tank consists of a cylindrical shell with two hemispherical heads.
     Both the shell and heads are made from rolled steel plate, which is
-    available in discrete thicknesses (multiples of 0.0625 inches).
+    available in discrete thicknesses in the original mixed-discrete
+    formulation. This implementation uses the continuous relaxation.
 
     ::
 
@@ -50,10 +51,10 @@ class PressureVesselFunction(EngineeringFunction):
     ----------------
     Ts : float
         Shell thickness.
-        Bounds: [0.0625, 6.1875] inches (integer multiples of 0.0625)
+        Bounds: [0.0625, 6.1875] inches
     Th : float
         Head thickness.
-        Bounds: [0.0625, 6.1875] inches (integer multiples of 0.0625)
+        Bounds: [0.0625, 6.1875] inches
     R : float
         Inner radius of the vessel.
         Bounds: [10.0, 200.0] inches
@@ -95,9 +96,10 @@ class PressureVesselFunction(EngineeringFunction):
     Attributes
     ----------
     f_global : float
-        Best known objective value: approximately 6059.71.
+        Objective value at the continuous-relaxation optimum: approximately 5885.3328.
     x_global : ndarray
-        Best known solution: [0.8125, 0.4375, 42.0984, 176.6366].
+        Continuous-relaxation optimum:
+        [0.7781686413751053, 0.3846491626279018, 40.31961872409872, 200.0].
 
     Notes
     -----
@@ -121,7 +123,8 @@ class PressureVesselFunction(EngineeringFunction):
     >>> # Evaluate at a point
     >>> result = func({"Ts": 0.8, "Th": 0.4, "R": 42.0, "L": 180.0})
     >>> # Check if design meets volume requirement
-    >>> func.is_feasible({"Ts": 0.8125, "Th": 0.4375, "R": 42.0984, "L": 176.6366})
+    >>> func.is_feasible({"Ts": 0.7781686413751053, "Th": 0.3846491626279018,
+    ...                   "R": 40.31961872409872, "L": 200.0})
     True
     """
 
@@ -146,12 +149,15 @@ class PressureVesselFunction(EngineeringFunction):
         "Shell/head thickness and vessel dimensions must satisfy stress and volume constraints."
     )
     display_bounds = {"R": (10.0, 80.0), "L": (10.0, 200.0)}
-    display_projection = {"dims": ("R", "L"), "fixed": {"Ts": 0.8125, "Th": 0.4375}}
+    display_projection = {
+        "dims": ("R", "L"),
+        "fixed": {"Ts": 0.7781686413751053, "Th": 0.3846491626279018},
+    }
     reference = "Sandgren (1990)"
     reference_url = "https://doi.org/10.1115/1.2912596"
 
-    f_global = 6059.7068
-    x_global = np.array([0.8125, 0.4375, 42.0984, 176.6366])
+    f_global = 5885.332773616459
+    x_global = np.array([0.7781686413751053, 0.3846491626279018, 40.31961872409872, 200.0])
 
     def __init__(
         self,

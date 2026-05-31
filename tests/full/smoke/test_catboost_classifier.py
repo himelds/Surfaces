@@ -3,12 +3,14 @@ import pytest
 from surfaces.test_functions.machine_learning.hyperparameter_optimization.tabular import (
     CatBoostClassifierFunction,
 )
+from tests.conftest import skip_if_missing_dependencies
 
 
 @pytest.mark.smoke
 @pytest.mark.ml
 def test_catboost_classifier_init():
     """Test that CatBoost Classifier instantiates and has a valid search space."""
+    skip_if_missing_dependencies(CatBoostClassifierFunction)
 
     func = CatBoostClassifierFunction(dataset="digits", cv=2)
     space = func.search_space

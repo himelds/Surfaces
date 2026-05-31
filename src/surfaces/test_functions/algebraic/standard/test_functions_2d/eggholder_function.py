@@ -49,7 +49,7 @@ class EggholderFunction(AlgebraicFunction):
         "unimodal": False,
         "separable": False,
         "scalable": False,
-        "default_bounds": (-1000.0, 1000.0),
+        "default_bounds": (-512.0, 512.0),
     }
 
     f_global = -959.6407

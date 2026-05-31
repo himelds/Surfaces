@@ -6,17 +6,46 @@ This file contains:
 - Shared helper functions for test utilities
 """
 
+import importlib.util
+
 import pytest
+
+
+def missing_optional_dependencies(func_class):
+    """Return optional dependencies required by a function class but not installed."""
+    missing = []
+    dependencies = getattr(func_class, "_dependencies", None) or {}
+
+    for extras, packages in dependencies.items():
+        for package in packages:
+            if importlib.util.find_spec(package) is None:
+                missing.append((package, extras))
+
+    return missing
+
+
+def skip_if_missing_dependencies(func_class):
+    """Skip tests for a function class when its declared optional deps are absent."""
+    missing = missing_optional_dependencies(func_class)
+    if not missing:
+        return
+
+    requirements = ", ".join(
+        f"{package} (install surfaces[{extras}])" for package, extras in missing
+    )
+    pytest.skip(f"{func_class.__name__} requires missing optional dependencies: {requirements}")
 
 
 def instantiate_function(func_class, n_dim=None):
     """Instantiate a test function with appropriate parameters.
 
-    Uses the class's _spec['scalable'] attribute to determine if n_dim is required,
-    rather than relying on try-except for control flow.
+    Uses the class's resolved _spec (a FunctionSpec) to determine if n_dim is
+    required, rather than relying on try-except for control flow.
     """
-    spec = getattr(func_class, "_spec", {})
-    is_scalable = spec.get("scalable", False)
+    skip_if_missing_dependencies(func_class)
+
+    spec = getattr(func_class, "_spec", None)
+    is_scalable = bool(getattr(spec, "scalable", False))
 
     if is_scalable or n_dim is not None:
         dim = n_dim if n_dim is not None else 2

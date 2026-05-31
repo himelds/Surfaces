@@ -46,11 +46,11 @@ Every test function has an ``eval_cost`` value in its spec:
 This value represents the average cost of a single evaluation in CU,
 measured with default parameters.
 
-You can also access it through the spec dict:
+You can also access it through the function spec:
 
 .. code-block:: python
 
-    func.spec.as_dict()["eval_cost"]  # 0.1
+    func.spec.eval_cost  # 0.1
 
 
 Typical Cost Ranges

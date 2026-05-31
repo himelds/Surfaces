@@ -22,15 +22,15 @@ Test Categories
 | TestDiscovery          | No            | Discovery mechanism itself works     |
 | TestClassAttributes    | No            | Static class-level attributes        |
 | TestStaticInterface    | No            | Required methods/properties on class |
-| TestStaticSpecification| No            | _spec dict on class hierarchy        |
+| TestStaticSpecification| No            | resolved FunctionSpec on classes     |
 
 Instantiation tests (creating instances, calling functions) are in:
     tests/full/smoke/test_instantiation.py
 
 Required Interface (every concrete test function MUST have)
 -----------------------------------------------------------
-- `name` or `_spec["name"]`: Human-readable function name
-- `_spec`: Dict with function characteristics (continuous, differentiable, etc.)
+- `name`: Human-readable function name, resolved through MetaSpec
+- `_spec`: FunctionSpec with characteristics (continuous, differentiable, etc.)
 - `_objective()`: Method that computes the objective value for given parameters
 - `search_space` property or `para_names`/`n_dim` to define parameter space
 - `tagline`: Short description of the function
@@ -45,6 +45,7 @@ Run only static checks (all tests are static now):
     pytest tests/core/properties/test_interface_compliance.py -m static -v
 """
 
+import dataclasses
 import importlib
 import inspect
 import pkgutil
@@ -53,6 +54,7 @@ from typing import Any, Dict, List, Set, Type
 import pytest
 
 from surfaces.test_functions._base_test_function import BaseTestFunction
+from surfaces.test_functions._function_spec import FunctionSpec, MetaSpec
 
 # Base classes that should be excluded from testing (abstract/intermediate)
 BASE_CLASS_NAMES = {
@@ -227,11 +229,11 @@ def class_id(func_class: Type[BaseTestFunction]) -> str:
 
 
 def _get_merged_spec(cls: Type) -> Dict[str, Any]:
-    """Merge _spec dicts from class hierarchy without instantiation.
+    """Return the resolved FunctionSpec as a plain dict.
 
-    Traverses the MRO (Method Resolution Order) and merges all _spec
-    dicts from base classes to the concrete class. Later classes in
-    the hierarchy override earlier ones.
+    ``BaseTestFunction.__init_subclass__`` resolves inheritance once at
+    class-definition time, so static tests should inspect the canonical
+    dataclass instead of re-implementing MRO merging.
 
     Parameters
     ----------
@@ -243,11 +245,22 @@ def _get_merged_spec(cls: Type) -> Dict[str, Any]:
     Dict[str, Any]
         Merged spec dict from entire class hierarchy.
     """
-    merged: Dict[str, Any] = {}
-    for klass in reversed(cls.__mro__):
-        if hasattr(klass, "_spec") and isinstance(klass._spec, dict):
-            merged.update(klass._spec)
-    return merged
+    spec = getattr(cls, "_spec", None)
+    if isinstance(spec, FunctionSpec):
+        return dataclasses.asdict(spec)
+    if isinstance(spec, dict):
+        return dict(spec)
+    return {}
+
+
+def _get_merged_meta(cls: Type) -> Dict[str, Any]:
+    """Return the resolved MetaSpec as a plain dict."""
+    meta = getattr(cls, "_meta", None)
+    if isinstance(meta, MetaSpec):
+        return dataclasses.asdict(meta)
+    if isinstance(meta, dict):
+        return dict(meta)
+    return {}
 
 
 # Discover all test function classes once at module load time
@@ -275,10 +288,20 @@ class TestClassAttributes:
             f"{func_class.__name__}: Missing 'name' attribute"
         )
 
-    def test_has_spec_dict(self, func_class: Type[BaseTestFunction]) -> None:
-        """Class must have _spec dict defining function characteristics."""
+    def test_has_spec(self, func_class: Type[BaseTestFunction]) -> None:
+        """Class must have a resolved FunctionSpec."""
         assert hasattr(func_class, "_spec"), f"{func_class.__name__}: Missing '_spec'"
-        assert isinstance(func_class._spec, dict), f"{func_class.__name__}: _spec must be dict"
+        assert isinstance(func_class._spec, FunctionSpec), (
+            f"{func_class.__name__}: _spec must be FunctionSpec, "
+            f"got {type(func_class._spec).__name__}"
+        )
+
+    def test_has_meta(self, func_class: Type[BaseTestFunction]) -> None:
+        """Class must have a resolved MetaSpec."""
+        assert hasattr(func_class, "_meta"), f"{func_class.__name__}: Missing '_meta'"
+        assert isinstance(func_class._meta, MetaSpec), (
+            f"{func_class.__name__}: _meta must be MetaSpec, got {type(func_class._meta).__name__}"
+        )
 
     def test_has_objective_implementation(self, func_class: Type[BaseTestFunction]) -> None:
         """Class must provide an objective implementation (either pattern)."""
@@ -331,16 +354,10 @@ class TestStaticInterface:
         Note: This is currently a soft requirement - we warn but don't fail
         for classes missing tagline, as many existing functions need updates.
         """
-        has_tagline = hasattr(func_class, "tagline") and func_class.tagline
-        has_tagline_in_spec = (
-            hasattr(func_class, "_spec")
-            and isinstance(func_class._spec, dict)
-            and "tagline" in func_class._spec
-        )
-        merged_spec = _get_merged_spec(func_class)
-        has_tagline_merged = "tagline" in merged_spec
+        merged_meta = _get_merged_meta(func_class)
+        has_tagline = bool(merged_meta.get("tagline"))
 
-        if not (has_tagline or has_tagline_in_spec or has_tagline_merged):
+        if not has_tagline:
             pytest.skip(f"{func_class.__name__}: Missing 'tagline' (soft requirement)")
 
     def test_has_reference_url(self, func_class: Type[BaseTestFunction]) -> None:
@@ -349,16 +366,10 @@ class TestStaticInterface:
         Note: This is currently a soft requirement - we warn but don't fail
         for classes missing reference_url, as many existing functions need updates.
         """
-        has_ref = hasattr(func_class, "reference_url") and func_class.reference_url
-        has_ref_in_spec = (
-            hasattr(func_class, "_spec")
-            and isinstance(func_class._spec, dict)
-            and "reference_url" in func_class._spec
-        )
-        merged_spec = _get_merged_spec(func_class)
-        has_ref_merged = "reference_url" in merged_spec
+        merged_meta = _get_merged_meta(func_class)
+        has_ref = bool(merged_meta.get("reference_url"))
 
-        if not (has_ref or has_ref_in_spec or has_ref_merged):
+        if not has_ref:
             pytest.skip(f"{func_class.__name__}: Missing 'reference_url' (soft requirement)")
 
 
@@ -380,9 +391,11 @@ class TestStaticSpecification:
     - Some optimizers behave differently based on properties
     """
 
-    def test_spec_is_dict(self, func_class: Type[BaseTestFunction]) -> None:
-        """Class _spec must be a dict."""
-        assert isinstance(func_class._spec, dict), f"{func_class.__name__}: _spec must be dict"
+    def test_spec_is_function_spec(self, func_class: Type[BaseTestFunction]) -> None:
+        """Class _spec must be a resolved FunctionSpec."""
+        assert isinstance(func_class._spec, FunctionSpec), (
+            f"{func_class.__name__}: _spec must be FunctionSpec"
+        )
 
     def test_merged_spec_has_required_keys(self, func_class: Type[BaseTestFunction]) -> None:
         """Merged spec must contain: continuous, differentiable, default_bounds.

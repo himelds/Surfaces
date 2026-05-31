@@ -1,5 +1,7 @@
 """K-Nearest Neighbors Classifier test function with surrogate support."""
 
+import math
+from numbers import Integral
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -110,20 +112,50 @@ class KNeighborsClassifierFunction(BaseClassification):
     def _default_search_space(self) -> Dict[str, Any]:
         """Search space containing only hyperparameters (not dataset/cv)."""
         return {
-            "n_neighbors": self.n_neighbors_default,
+            "n_neighbors": self._valid_n_neighbors_default(),
             "algorithm": self.algorithm_default,
         }
+
+    def _max_valid_n_neighbors(self, n_samples: int) -> int:
+        """Maximum neighbors available in the smallest CV training fold."""
+        return n_samples - math.ceil(n_samples / self.cv)
+
+    def _valid_n_neighbors_default(self) -> List[int]:
+        X, _ = self._dataset_loader()
+        max_neighbors = self._max_valid_n_neighbors(len(X))
+        valid_neighbors = [
+            int(n_neighbors)
+            for n_neighbors in self.n_neighbors_default
+            if n_neighbors <= max_neighbors
+        ]
+        if valid_neighbors:
+            return valid_neighbors
+        return [max_neighbors]
+
+    def _validate_n_neighbors(self, n_neighbors: Any, n_samples: int) -> None:
+        if isinstance(n_neighbors, bool) or not isinstance(n_neighbors, Integral):
+            raise ValueError(f"n_neighbors must be a positive integer, got {n_neighbors!r}")
+
+        max_neighbors = self._max_valid_n_neighbors(n_samples)
+        if n_neighbors < 1 or n_neighbors > max_neighbors:
+            raise ValueError(
+                f"n_neighbors={n_neighbors} is invalid for dataset='{self.dataset}' "
+                f"with cv={self.cv}. The largest training fold supports at most "
+                f"{max_neighbors} neighbors."
+            )
 
     def _ml_objective(self, params: Dict[str, Any]) -> float:
         from sklearn.model_selection import cross_val_score
         from sklearn.neighbors import KNeighborsClassifier
 
         X, y = self._get_training_data()
+        self._validate_n_neighbors(params["n_neighbors"], len(X))
+
         knc = KNeighborsClassifier(
             n_neighbors=params["n_neighbors"],
             algorithm=params["algorithm"],
         )
-        scores = cross_val_score(knc, X, y, cv=self.cv, scoring="accuracy")
+        scores = cross_val_score(knc, X, y, cv=self.cv, scoring="accuracy", error_score="raise")
         return scores.mean()
 
     def _get_surrogate_params(self, params: Dict[str, Any]) -> Dict[str, Any]:

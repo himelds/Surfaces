@@ -99,6 +99,17 @@ class WFG9(BaseWFGFunction):
         result[M - 1] = r_nonsep(t2[k:], n_dist)
         return result
 
+    def _distance_optimum(self, y_position):
+        distance = np.zeros(self._n_dist)
+        if self._n_dist == 0:
+            return distance
+
+        distance[-1] = 0.35
+        for i in range(self._n_dist - 2, -1, -1):
+            u = float(np.mean(distance[i + 1 :]))
+            distance[i] = self._b_param_inverse_for_shift_optimum(u)
+        return distance
+
     def _compute_objectives(self, x):
         M = self.n_objectives
         f = np.zeros(M)

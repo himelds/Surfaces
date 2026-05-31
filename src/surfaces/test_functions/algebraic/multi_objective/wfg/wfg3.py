@@ -62,9 +62,9 @@ class WFG3(BaseWFGFunction):
     }
 
     def __init__(self, n_objectives=3, k=None, n_dist=20, **kwargs):
-        if n_dist % 2 != 0:
-            raise ValueError(f"n_dist must be even for WFG3, got n_dist={n_dist}")
         super().__init__(n_objectives=n_objectives, k=k, n_dist=n_dist, **kwargs)
+        if self._n_dist % 2 != 0:
+            raise ValueError(f"n_dist must be even for WFG3, got n_dist={self._n_dist}")
         # Degenerate front: only the first A entry is 1
         self._A = np.zeros(n_objectives - 1)
         self._A[0] = 1.0

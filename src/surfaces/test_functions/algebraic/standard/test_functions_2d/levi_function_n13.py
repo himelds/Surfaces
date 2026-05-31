@@ -92,8 +92,8 @@ class LeviFunctionN13(AlgebraicFunction):
 
         return (
             math.sin(3 * math.pi * x) ** 2
-            + (x + 1) ** 2 * (1 + math.sin(3 * math.pi * y) ** 2)
-            + (y - 1) ** 2 * (1 + math.sin(3 * math.pi * y) ** 2)
+            + (x - 1) ** 2 * (1 + math.sin(3 * math.pi * y) ** 2)
+            + (y - 1) ** 2 * (1 + math.sin(2 * math.pi * y) ** 2)
         )
 
     def _batch_objective(self, X: ArrayLike) -> ArrayLike:
@@ -114,11 +114,10 @@ class LeviFunctionN13(AlgebraicFunction):
         x = X[:, 0]
         y = X[:, 1]
 
-        # Match the sequential implementation exactly
         return (
             xp.sin(3 * math.pi * x) ** 2
-            + (x + 1) ** 2 * (1 + xp.sin(3 * math.pi * y) ** 2)
-            + (y - 1) ** 2 * (1 + xp.sin(3 * math.pi * y) ** 2)
+            + (x - 1) ** 2 * (1 + xp.sin(3 * math.pi * y) ** 2)
+            + (y - 1) ** 2 * (1 + xp.sin(2 * math.pi * y) ** 2)
         )
 
     def _search_space(

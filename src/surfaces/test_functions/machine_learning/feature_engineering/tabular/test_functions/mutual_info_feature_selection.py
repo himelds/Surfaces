@@ -98,13 +98,13 @@ class MutualInfoFeatureSelectionFunction(BaseTabularFeatureEngineering):
         from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
         from sklearn.feature_selection import SelectKBest, mutual_info_classif
         from sklearn.model_selection import cross_val_score
+        from sklearn.pipeline import Pipeline
         from sklearn.tree import DecisionTreeClassifier
 
         X, y = self._get_training_data()
 
         n_features = params["n_features"]
         selector = SelectKBest(mutual_info_classif, k=min(n_features, X.shape[1]))
-        X_selected = selector.fit_transform(X, y)
 
         model_type = params["model_type"]
         if model_type == "dt":
@@ -116,5 +116,18 @@ class MutualInfoFeatureSelectionFunction(BaseTabularFeatureEngineering):
         else:
             raise ValueError(f"Unknown model_type: {model_type}")
 
-        scores = cross_val_score(model, X_selected, y, cv=self.cv, scoring="accuracy")
+        pipeline = Pipeline(
+            [
+                ("feature_selection", selector),
+                ("model", model),
+            ]
+        )
+        scores = cross_val_score(
+            pipeline,
+            X,
+            y,
+            cv=self.cv,
+            scoring="accuracy",
+            error_score="raise",
+        )
         return scores.mean()

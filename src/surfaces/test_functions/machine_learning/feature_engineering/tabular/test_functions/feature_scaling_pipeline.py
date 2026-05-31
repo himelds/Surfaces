@@ -90,6 +90,7 @@ class FeatureScalingPipelineFunction(BaseTabularFeatureEngineering):
     def _ml_objective(self, params: Dict[str, Any]) -> float:
         from sklearn.ensemble import GradientBoostingClassifier
         from sklearn.model_selection import cross_val_score
+        from sklearn.pipeline import Pipeline
         from sklearn.preprocessing import MinMaxScaler, RobustScaler, StandardScaler
         from sklearn.svm import SVC
 
@@ -98,15 +99,12 @@ class FeatureScalingPipelineFunction(BaseTabularFeatureEngineering):
         scaler_type = params["scaler"]
         if scaler_type == "standard":
             scaler = StandardScaler()
-            X_scaled = scaler.fit_transform(X)
         elif scaler_type == "minmax":
             scaler = MinMaxScaler()
-            X_scaled = scaler.fit_transform(X)
         elif scaler_type == "robust":
             scaler = RobustScaler()
-            X_scaled = scaler.fit_transform(X)
         elif scaler_type == "none":
-            X_scaled = X
+            scaler = None
         else:
             raise ValueError(f"Unknown scaler: {scaler_type}")
 
@@ -118,5 +116,18 @@ class FeatureScalingPipelineFunction(BaseTabularFeatureEngineering):
         else:
             raise ValueError(f"Unknown model_type: {model_type}")
 
-        scores = cross_val_score(model, X_scaled, y, cv=self.cv, scoring="accuracy")
+        steps = []
+        if scaler is not None:
+            steps.append(("scaler", scaler))
+        steps.append(("model", model))
+
+        pipeline = Pipeline(steps)
+        scores = cross_val_score(
+            pipeline,
+            X,
+            y,
+            cv=self.cv,
+            scoring="accuracy",
+            error_score="raise",
+        )
         return scores.mean()
