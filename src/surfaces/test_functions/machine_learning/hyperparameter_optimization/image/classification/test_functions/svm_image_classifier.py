@@ -96,15 +96,11 @@ class SVMImageClassifierFunction(BaseImageClassification):
     def _ml_objective(self, params: Dict[str, Any]) -> float:
         from sklearn.decomposition import PCA
         from sklearn.model_selection import cross_val_score
+        from sklearn.pipeline import Pipeline
         from sklearn.preprocessing import StandardScaler
         from sklearn.svm import SVC
 
         X_raw, y = self._get_training_data()
-
-        scaler = StandardScaler()
-        pca = PCA(n_components=self.n_components, random_state=42)
-        X_scaled = scaler.fit_transform(X_raw)
-        X = pca.fit_transform(X_scaled)
 
         model = SVC(
             C=params["C"],
@@ -112,7 +108,21 @@ class SVMImageClassifierFunction(BaseImageClassification):
             gamma=params["gamma"],
             random_state=42,
         )
-        scores = cross_val_score(model, X, y, cv=self.cv, scoring="accuracy")
+        pipeline = Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                ("pca", PCA(n_components=self.n_components, random_state=42)),
+                ("model", model),
+            ]
+        )
+        scores = cross_val_score(
+            pipeline,
+            X_raw,
+            y,
+            cv=self.cv,
+            scoring="accuracy",
+            error_score="raise",
+        )
         return scores.mean()
 
     def _get_surrogate_params(self, params: Dict[str, Any]) -> Dict[str, Any]:

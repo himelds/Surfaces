@@ -93,18 +93,29 @@ class KNNTSClassifierFunction(BaseTSClassification):
     def _ml_objective(self, params: Dict[str, Any]) -> float:
         from sklearn.model_selection import cross_val_score
         from sklearn.neighbors import KNeighborsClassifier
+        from sklearn.pipeline import Pipeline
         from sklearn.preprocessing import StandardScaler
 
         X_raw, y = self._get_training_data()
-        scaler = StandardScaler()
-        X = scaler.fit_transform(X_raw)
-
         model = KNeighborsClassifier(
             n_neighbors=params["n_neighbors"],
             metric=params["metric"],
             n_jobs=-1,
         )
-        scores = cross_val_score(model, X, y, cv=self.cv, scoring="accuracy")
+        pipeline = Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                ("model", model),
+            ]
+        )
+        scores = cross_val_score(
+            pipeline,
+            X_raw,
+            y,
+            cv=self.cv,
+            scoring="accuracy",
+            error_score="raise",
+        )
         return scores.mean()
 
     def _get_surrogate_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
